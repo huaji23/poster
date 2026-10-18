@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>王华基 / whj - AI Agent Engineer</title>
+<meta name="description" content="AI Agent 工程师 - 从模型选型到上线运维全流程">
+<meta property="og:title" content="王华基 / whj - AI Agent Engineer">
+<meta property="og:description" content="我不调用 AI，我让 AI 替我干活">
+<style>
+html,body.root{margin:0;padding:0;background:#05060a;}
+.stage{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:18px;}
+.frame{width:min(100%,760px);aspect-ratio:1080/1440;position:relative;border-radius:14px;
+  overflow:hidden;box-shadow:0 30px 90px rgba(0,0,0,.75),0 0 0 1px rgba(255,255,255,.07);}
+.scaler{position:absolute;top:0;left:0;width:1080px;height:1440px;transform-origin:top left;}
+
+* { margin:0; padding:0; box-sizing:border-box; }
+.poster {
+  width:1080px; height:1440px; overflow:hidden;
+  background:#08090d;
+  font-family:"Noto Sans CJK SC","Noto Sans SC",sans-serif;
+  color:#fff; position:relative;
+}
+.grid { position:absolute; inset:0;
+  background-image:
+    linear-gradient(rgba(80,220,180,.055) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(80,220,180,.055) 1px, transparent 1px);
+  background-size:60px 60px; }
+.glow1 { position:absolute; width:680px; height:680px; border-radius:50%;
+  background:radial-gradient(circle, rgba(45,212,168,.22) 0%, transparent 68%);
+  top:-280px; right:-210px; filter:blur(24px); }
+.glow2 { position:absolute; width:600px; height:600px; border-radius:50%;
+  background:radial-gradient(circle, rgba(90,120,255,.15) 0%, transparent 68%);
+  bottom:-250px; left:-200px; filter:blur(28px); }
+
+.wrap { position:relative; z-index:2; padding:64px 76px 56px; height:100%;
+  display:flex; flex-direction:column; }
+
+.top { display:flex; align-items:center; justify-content:space-between; }
+.badge { display:inline-flex; align-items:center; gap:11px;
+  border:1px solid rgba(45,212,168,.42); border-radius:999px;
+  padding:11px 23px; font-size:21px; letter-spacing:.06em;
+  color:#2dd4a8; background:rgba(45,212,168,.07); }
+.dot { width:10px; height:10px; border-radius:50%; background:#2dd4a8;
+  box-shadow:0 0 13px #2dd4a8; }
+.year { font-size:21px; color:#5b6473; letter-spacing:.22em; font-weight:600; }
+
+.eyebrow { margin-top:60px; font-size:24px; color:#2dd4a8;
+  letter-spacing:.34em; font-weight:700; }
+h1 { margin-top:26px; font-size:82px; line-height:1.2; font-weight:900;
+  letter-spacing:-.028em; }
+h1 .accent { background:linear-gradient(96deg,#2dd4a8 0%,#5eead4 44%,#7dd3fc 100%);
+  -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+.sub { margin-top:30px; font-size:28px; line-height:1.72; color:#a8b2c1;
+  max-width:900px; }
+.sub b { color:#fff; font-weight:700; }
+
+.stats { margin-top:46px; display:grid; grid-template-columns:repeat(3,1fr); gap:18px; }
+.card { border:1px solid rgba(255,255,255,.09); border-radius:19px;
+  background:linear-gradient(160deg, rgba(255,255,255,.055), rgba(255,255,255,.012));
+  padding:28px 24px 24px; }
+.card .num { font-size:54px; font-weight:900; letter-spacing:-.035em;
+  background:linear-gradient(150deg,#fff,#8f9bad);
+  -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+.card .num small { font-size:26px; font-weight:800; }
+.card .lbl { margin-top:9px; font-size:20px; color:#7d8797; line-height:1.5; }
+
+.skills { margin-top:42px; }
+.skills .t { font-size:19px; color:#4b5462; letter-spacing:.28em;
+  font-weight:700; margin-bottom:17px; }
+.tags { display:flex; flex-wrap:wrap; gap:11px; }
+.tag { border:1px solid rgba(255,255,255,.13); border-radius:10px;
+  padding:9px 18px; font-size:21px; color:#c3ccd9;
+  background:rgba(255,255,255,.028); }
+.tag.hot { border-color:rgba(45,212,168,.5); color:#2dd4a8;
+  background:rgba(45,212,168,.085); }
+
+.foot { margin-top:auto; padding-top:26px;
+  border-top:1px solid rgba(255,255,255,.1);
+  display:flex; align-items:flex-end; justify-content:space-between; }
+.foot .name { font-size:29px; font-weight:800; }
+.foot .name span { color:#2dd4a8; }
+.foot .role { font-size:19px; color:#5f6a78; margin-top:7px; letter-spacing:.05em; }
+.foot .cta { text-align:right; font-size:21px; color:#8994a4; line-height:1.6; }
+.foot .cta .hi { color:#2dd4a8; font-weight:700; font-size:23px; }
+
+</style></head>
+<body class="root">
+<div class="stage"><div class="frame" id="frame"><div class="scaler" id="scaler">
+<div class="poster">
+<div class="grid"></div><div class="glow1"></div><div class="glow2"></div>
+<div class="wrap">
+
+  <div class="top">
+    <div class="badge"><span class="dot"></span>AVAILABLE FOR WORK</div>
+    <div class="year">2026</div>
+  </div>
+
+  <div class="eyebrow">AI AGENT ENGINEER</div>
+
+  <h1>
+    我不调用 AI，<br>
+    <span class="accent">我让 AI 替我干活</span>
+  </h1>
+
+  <div class="sub">
+    从模型选型到上线运维，全流程独立完成。<br>
+    做过的不是 Demo —— <b>是 7×24 在跑的智能家居、<br>多用户隔离的记忆系统、能自己拆解爆款的视频流水线。</b>
+  </div>
+
+  <div class="stats">
+    <div class="card">
+      <div class="num">136<small> 个</small></div>
+      <div class="lbl">自建 AI 技能<br>按需加载不占上下文</div>
+    </div>
+    <div class="card">
+      <div class="num">20<small> 人</small></div>
+      <div class="lbl">企业级 Agent 平台<br>设计过隔离方案</div>
+    </div>
+    <div class="card">
+      <div class="num">0.7<small> 秒</small></div>
+      <div class="lbl">摄像头端到端延迟<br>实测，非估算</div>
+    </div>
+  </div>
+
+  <div class="skills">
+    <div class="t">STACK</div>
+    <div class="tags">
+      <span class="tag hot">AI Agent</span>
+      <span class="tag hot">RAG / 多用户记忆</span>
+      <span class="tag hot">MCP</span>
+      <span class="tag">Dify</span>
+      <span class="tag">Python</span>
+      <span class="tag">OpenCV 实时视觉</span>
+      <span class="tag">智能家居自动化</span>
+      <span class="tag">视频生成流水线</span>
+      <span class="tag">Docker 全栈部署</span>
+    </div>
+  </div>
+
+  <div class="foot">
+    <div>
+      <div class="name">王华基 <span>/ whj</span></div>
+      <div class="role">AI AGENT · FULL STACK · AUTOMATION</div>
+    </div>
+    <div class="cta">
+      <div class="hi">聊合作 →</div>
+      <div>微信 / 邮箱见主页</div>
+    </div>
+  </div>
+
+</div>
+</div>
+</div></div></div>
+<script>
+function fit(){var f=document.getElementById('frame'),s=document.getElementById('scaler');
+s.style.transform='scale('+(f.clientWidth/1080)+')';}
+addEventListener('resize',fit);fit();
+</script>
+</body></html>
