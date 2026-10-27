@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#0a0d12">
+<title>大话骰 · 广东玩法</title>
+<style>
+  :root{
+    --void:#0a0d12;
+    --panel:#141a23;
+    --panel-hi:#1b2430;
+    --ivory:#f3ecdd;
+    --red:#e8443f;
+    --gold:#e6b34d;
+    --jade:#37c9a0;
+    --ink:#e9eef6;
+    --dim:rgba(233,238,246,.42);
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%;overflow:clip;background:var(--void);color:var(--ink);
+    font-family:-apple-system,"PingFang SC","Noto Sans CJK SC",system-ui,sans-serif;user-select:none}
+  #app{height:100%;display:flex;flex-direction:column;padding:14px;gap:11px}
+
+  /* ── 顶栏 ── */
+  #top{display:flex;align-items:center;gap:9px;flex:0 0 auto}
+  #title{font-size:15px;font-weight:900;letter-spacing:3px;color:var(--gold)}
+  #roundTag{margin-left:auto;font-size:12px;color:var(--dim);letter-spacing:1px}
+
+  /* ── 玩家列表 ── */
+  #players{display:flex;gap:6px;overflow-x:auto;flex:0 0 auto;scrollbar-width:none;padding-bottom:2px}
+  #players::-webkit-scrollbar{display:none}
+  .pl{flex:0 0 auto;padding:7px 12px;border-radius:11px;font-size:13px;font-weight:700;
+    background:var(--panel);border:1px solid rgba(230,179,77,.1);color:var(--dim);
+    transition:background-color .2s,border-color .2s,color .2s,box-shadow .2s;white-space:nowrap;display:flex;align-items:center;gap:6px}
+  .pl .dt{width:6px;height:6px;border-radius:50%;background:rgba(233,238,246,.16)}
+  .pl.on{background:linear-gradient(180deg,rgba(230,179,77,.22),rgba(230,179,77,.06));
+    border-color:rgba(230,179,77,.55);color:var(--gold);box-shadow:0 0 18px rgba(230,179,77,.14)}
+  .pl.on .dt{background:var(--gold);box-shadow:0 0 8px var(--gold)}
+  .pl .cnt{font-size:11px;opacity:.7;font-weight:600}
+
+  /* ── 主舞台 ── */
+  #stage{flex:1 1 auto;display:flex;flex-direction:column;align-items:center;
+    justify-content:center;gap:16px;min-height:0}
+
+  /* 骰子行 */
+  .drow{display:flex;gap:9px;justify-content:center;flex-wrap:wrap}
+  .die{width:52px;height:52px;border-radius:11px;background:var(--ivory);
+    position:relative;box-shadow:0 4px 14px rgba(0,0,0,.5),inset 0 -2px 4px rgba(0,0,0,.1);
+    transition:transform .15s}
+  .die.wild{box-shadow:0 4px 14px rgba(0,0,0,.5),0 0 0 2px var(--red),0 0 18px rgba(232,68,63,.5)}
+  .die.sm{width:34px;height:34px;border-radius:7px}
+  .pip{position:absolute;width:19%;height:19%;border-radius:50%;background:#1c1710;
+    box-shadow:inset 0 1px 2px rgba(255,255,255,.22)}
+  .die.sm .pip{width:20%;height:20%}
+
+  /* 遮罩 / 未知 */
+  .cup{width:52px;height:52px;border-radius:11px;
+    background:linear-gradient(160deg,#2a3442,#161d27);
+    border:1px solid rgba(233,238,246,.1);position:relative;
+    display:flex;align-items:center;justify-content:center;
+    color:rgba(233,238,246,.22);font-size:22px;font-weight:900}
+
+  /* 叫骰大字 */
+  #bidBig{text-align:center}
+  #bidBig .n{font-size:60px;font-weight:900;letter-spacing:-2px;line-height:1;
+    color:var(--gold);font-variant-numeric:tabular-nums}
+  #bidBig .unit{font-size:17px;font-weight:800;color:var(--dim);margin:0 6px;letter-spacing:1px}
+  #bidBig .tag{font-size:12px;margin-top:8px;letter-spacing:2px;font-weight:800}
+  #bidBig .tag.zai{color:var(--jade)}
+  #bidBig .tag.fei{color:var(--gold)}
+  #bidBig .who{font-size:12.5px;color:var(--dim);margin-top:6px}
+
+  /* 提示语 */
+  #hint{font-size:14px;color:var(--dim);text-align:center;line-height:1.65;letter-spacing:.3px}
+
+  /* ── 底部操作区 ── */
+  #ctrl{flex:0 0 auto;display:flex;flex-direction:column;gap:9px}
+  .row{display:flex;gap:9px}
+  .btn{flex:1;padding:15px 10px;border-radius:13px;border:none;cursor:pointer;
+    font-family:inherit;font-size:15px;font-weight:800;letter-spacing:.6px;
+    transition:transform .09s,opacity .18s}
+  .btn:active{transform:scale(.975)}
+  .btn:disabled{opacity:.3;cursor:default}
+  .b-gold{background:linear-gradient(180deg,var(--gold),#c28f2c);color:#1a1102}
+  .b-jade{background:linear-gradient(180deg,var(--jade),#1f9b78);color:#03150f}
+  .b-red{background:linear-gradient(180deg,var(--red),#b32b27);color:#fff}
+  .b-ghost{background:var(--panel-hi);color:var(--ink);border:1px solid rgba(233,238,246,.1)}
+  .b-sm{padding:12px 8px;font-size:13.5px}
+
+  /* 步进器 */
+  .step{display:flex;align-items:center;gap:0;background:var(--panel);border-radius:13px;
+    border:1px solid rgba(233,238,246,.08);overflow:hidden;flex:1}
+  .step button{flex:0 0 46px;height:52px;border:none;background:transparent;color:var(--ink);
+    font-size:22px;font-weight:700;cursor:pointer;font-family:inherit}
+  .step button:disabled{opacity:.22}
+  .step .val{flex:1;text-align:center;font-size:22px;font-weight:900;
+    font-variant-numeric:tabular-nums}
+  .step .lbl{font-size:10px;color:var(--dim);letter-spacing:1px;display:block;font-weight:600}
+
+  /* ── 结果弹层 ── */
+  #modal{position:fixed;inset:0;background:rgba(10,13,18,.94);backdrop-filter:blur(16px);
+    display:none;align-items:center;justify-content:center;z-index:50;padding:20px}
+  #modal.on{display:flex}
+  .card{width:100%;max-width:400px;padding:24px 20px;border-radius:20px;
+    background:linear-gradient(180deg,#151d27,#0d1219);border:1px solid rgba(230,179,77,.2);
+    box-shadow:0 24px 70px rgba(0,0,0,.75);max-height:88vh;overflow-y:auto}
+  .card h2{margin:0 0 6px;font-size:23px;letter-spacing:2px;text-align:center}
+  .card .sub{text-align:center;font-size:12.5px;color:var(--dim);margin-bottom:18px}
+  .card .btn{margin-top:9px}
+  .revRow{display:flex;align-items:center;gap:9px;padding:9px 0;
+    border-bottom:1px solid rgba(233,238,246,.06)}
+  .revRow:last-child{border:none}
+  .revRow .nm{flex:0 0 62px;font-size:12.5px;font-weight:700;color:var(--dim);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .revRow .ds{display:flex;gap:4px;flex:1}
+  .revRow .hit{color:var(--gold);font-size:11px;font-weight:800;min-width:34px;text-align:right}
+
+  /* ── 开场 ── */
+  #boot{position:fixed;inset:0;z-index:90;display:flex;align-items:center;justify-content:center;
+    flex-direction:column;padding:26px;background:radial-gradient(ellipse at 50% 30%,#161f2b,#0a0d12 72%);
+    transition:opacity .4s}
+  #boot.gone{opacity:0;pointer-events:none}
+  #boot h1{font-size:34px;letter-spacing:9px;font-weight:900;color:var(--gold);margin-bottom:8px}
+  #boot .s1{font-size:12.5px;color:var(--dim);letter-spacing:3px;margin-bottom:24px}
+  #boot .box{background:var(--panel);border:1px solid rgba(233,238,246,.08);border-radius:16px;
+    padding:16px 18px;max-width:360px;width:100%;margin-bottom:20px}
+  #boot .box .r{display:flex;gap:9px;padding:6px 0;font-size:12.5px;line-height:1.55}
+  #boot .box .r b{flex:0 0 62px;color:var(--gold);font-weight:800}
+  #boot .box .r span{color:rgba(233,238,246,.62);flex:1}
+  #boot .cnt{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-bottom:20px}
+  #boot .cnt button{padding:11px 19px;border-radius:11px;border:1px solid rgba(230,179,77,.2);
+    background:rgba(230,179,77,.06);color:rgba(233,238,246,.6);font-family:inherit;
+    font-size:13.5px;font-weight:700;cursor:pointer}
+  #boot .cnt button.on{background:rgba(230,179,77,.22);border-color:var(--gold);color:var(--gold)}
+  #go{padding:15px 58px;border-radius:14px;border:none;cursor:pointer;font-family:inherit;
+    font-size:16px;font-weight:900;letter-spacing:4px;
+    background:linear-gradient(180deg,var(--gold),#c28f2c);color:#1a1102}
+  #go:disabled{opacity:.32;cursor:default}
+
+  /* ── 看骰定时条 ── */
+  #timer{height:4px;border-radius:2px;background:rgba(233,238,246,.1);overflow:hidden;
+    width:100%;max-width:300px;margin:0 auto}
+  #timer i{display:block;height:100%;background:var(--red);width:100%;
+    transform-origin:left;transition:transform .1s linear}
+
+  /* ── 无障碍兜底 ───────────────────────────────────────────────
+     键盘焦点必须可见且即时出现（不能等过渡），否则键盘用户完全无法操作。
+     用 outline 而不是 box-shadow，因为它不受 border-radius 和 overflow 裁切影响。 */
+  :focus-visible{outline:2px solid var(--gold);outline-offset:3px;border-radius:4px}
+  .btn:focus-visible,#go:focus-visible,#boot .cnt button:focus-visible{outline-width:3px;outline-offset:4px}
+  .step button:focus-visible{outline-offset:-2px;border-radius:8px}
+
+  /* 前庭功能敏感的用户会因为位移/缩放动画产生晕动。全部压成瞬变，
+     但保留颜色变化 —— 那不是运动。 */
+  @media (prefers-reduced-motion: reduce){
+    *,*::before,*::after{
+      animation-duration:.001ms !important;
+      animation-iteration-count:1 !important;
+      transition-property:background-color,border-color,color,opacity !important;
+      transition-duration:.001ms !important;
+      scroll-behavior:auto !important;
+    }
+    .btn:active,.pl,.die{transform:none !important}
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="top">
+    <span id="title">大 话 骰</span>
+    <span id="roundTag">第 1 局</span>
+  </div>
+  <div id="players"></div>
+  <div id="stage"></div>
+  <div id="ctrl"></div>
+</div>
+
+<div id="modal"><div class="card" id="mcard"></div></div>
+
+<div id="boot">
+  <h1>大 话 骰</h1>
+  <div class="s1">广东 · 粤港澳玩法</div>
+  <div class="box">
+    <div class="r"><b>骰子</b><span>每人 5 颗，只有自己看得到</span></div>
+    <div class="r"><b>万能 1</b><span>非「斋」时，1 点可以当 2~6 任意点数</span></div>
+    <div class="r"><b>斋</b><span>1 不再万能，只能算 1；叫斋最少叫「人头数」个 1</span></div>
+    <div class="r"><b>起叫</b><span>总人数 × 1.5（4 人 6 个起，6 人 9 个起）</span></div>
+    <div class="r"><b>往上</b><span>个数加 1，或同个数加点数</span></div>
+    <div class="r"><b>开</b><span>亮所有人骰子统计；叫的人虚报他喝，叫对了开的人喝</span></div>
+    <div class="r"><b>劈</b><span>罚翻倍；被劈可以「反劈」翻到 4 倍</span></div>
+  </div>
+  <div class="cnt" id="cntBox"></div>
+  <button id="go" disabled>开 局</button>
+</div>
+
+<script>
+/* ══════════════════════════════════════════════════════════
+   大话骰（广东/粤港澳玩法）
+   规则依据：百度百科「大话骰」基础玩法 + 可选玩法
+   ══════════════════════════════════════════════════════════ */
+const DICE_PER = 5;
+const NAMES = ['我','阿杰','老铁','小林','胖虎','大B'];
+
+const S = {
+  n: 0,                 // 人数
+  players: [],          // {name, dice[], sips}
+  round: 1,
+  phase: 'boot',        // boot | peek | bid | reveal
+  peekIdx: 0,           // 正在看骰的玩家
+  bid: null,            // {count, face, zai, by}
+  turn: 0,              // 轮到谁叫
+  mult: 1,              // 劈的倍数
+  chal: null,           // 谁开的
+};
+
+/* ── 工具 ── */
+const $ = id => document.getElementById(id);
+const rnd6 = () => 1 + Math.floor(Math.random() * 6);
+const startCount = n => Math.ceil(n * 1.5);   // 起叫个数
+
+/* 骰子面渲染 */
+const PIPS = {
+  1:[[50,50]],
+  2:[[27,27],[73,73]],
+  3:[[27,27],[50,50],[73,73]],
+  4:[[27,27],[73,27],[27,73],[73,73]],
+  5:[[27,27],[73,27],[50,50],[27,73],[73,73]],
+  6:[[27,27],[73,27],[27,50],[73,50],[27,73],[73,73]],
+};
+function dieHTML(v, opts={}){
+  const cls = 'die' + (opts.sm ? ' sm' : '') + (v === 1 && opts.wild ? ' wild' : '');
+  const pips = (PIPS[v] || []).map(([x,y]) =>
+    `<i class="pip" style="left:${x}%;top:${y}%;transform:translate(-50%,-50%)"></i>`).join('');
+  return `<div class="${cls}">${pips}</div>`;
+}
+const cupHTML = n => Array(n).fill('<div class="cup">?</div>').join('');
+
+/* ══════════════════════════════════════════════════════════
+   渲染
+   ══════════════════════════════════════════════════════════ */
+function renderPlayers(){
+  $('players').innerHTML = S.players.map((p,i) => {
+    const active = (S.phase === 'peek' && i === S.peekIdx) ||
+                   (S.phase === 'bid' && i === S.turn);
+    return `<div class="pl ${active?'on':''}">
+      <span class="dt"></span>${p.name}
+      ${p.sips ? `<span class="cnt">${p.sips}杯</span>` : ''}
+    </div>`;
+  }).join('');
+  $('roundTag').textContent = `第 ${S.round} 局`;
+}
+
+function render(){
+  renderPlayers();
+  const stage = $('stage'), ctrl = $('ctrl');
+  const p = S.players[S.cur != null ? S.cur : 0];
+
+  /* ── 看骰阶段 ── */
+  if(S.phase === 'peek'){
+    const pl = S.players[S.peekIdx];
+    stage.innerHTML = `
+      <div id="hint">把手机递给 <b style="color:var(--gold)">${pl.name}</b><br>
+        点下面按钮看自己的骰子，别让人看到</div>
+      <div class="drow">${cupHTML(DICE_PER)}</div>
+    `;
+    ctrl.innerHTML = `<div class="row">
+      <button class="btn b-gold" onclick="showMine()">看我的骰子</button>
+    </div>`;
+    return;
+  }
+
+  /* ── 叫骰阶段 ── */
+  if(S.phase === 'bid'){
+    const cur = S.players[S.turn];
+    const b = S.bid;
+    stage.innerHTML = b ? `
+      <div id="bidBig">
+        <div><span class="n">${b.count}</span><span class="unit">个</span><span class="n">${b.face}</span></div>
+        <div class="tag ${b.zai?'zai':'fei'}">${b.zai ? '斋 · 1 不万能' : '飞 · 1 万能'}</div>
+        <div class="who">${S.players[b.by].name} 叫的${S.mult>1?` · <b style="color:var(--red)">${S.mult}倍</b>`:''}</div>
+      </div>
+      <div id="hint">轮到 <b style="color:var(--gold)">${cur.name}</b> 叫骰</div>
+    ` : `
+      <div id="hint" style="font-size:17px;color:var(--gold);font-weight:800">
+        ${cur.name} 先叫<br>
+        <span style="font-size:12.5px;color:var(--dim);font-weight:400">
+          最少 ${startCount(S.n)} 个起</span>
+      </div>
+    `;
+
+    /* 候选：个数 或 点数 往上加 */
+    const baseC = b ? b.count : startCount(S.n);
+    const baseF = b ? b.face : 2;
+    const zai = b ? b.zai : false;
+    S.draft = S.draft || {count: baseC, face: baseF, zai};
+
+    /* 叫骰时随时能看到自己的骰子（真实玩法如此） */
+    const mine = S.players[S.turn].dice;
+    stage.innerHTML += `
+      <div style="width:100%;max-width:340px">
+        <div style="font-size:11px;color:var(--dim);letter-spacing:2px;margin-bottom:7px;
+          text-align:center">${cur.name} 的骰子</div>
+        <div class="drow" style="gap:6px">${mine.map(v=>dieHTML(v,{wild:true})).join('')}</div>
+      </div>`;
+
+    ctrl.innerHTML = `
+      <div class="row">
+        <div class="step">
+          <button onclick="stepCount(-1)" ${S.draft.count <= baseC ? 'disabled':''}>−</button>
+          <div class="val">${S.draft.count}<span class="lbl">个数</span></div>
+          <button onclick="stepCount(1)">+</button>
+        </div>
+        <div class="step">
+          <button onclick="stepFace(-1)" ${S.draft.face <= (S.draft.count>=baseC && b ? baseF : 2) ? 'disabled':''}>−</button>
+          <div class="val">${S.draft.face}<span class="lbl">点数</span></div>
+          <button onclick="stepFace(1)">+</button>
+        </div>
+      </div>
+      <div class="row">
+        <button class="btn b-ghost b-sm" onclick="toggleZai()">
+          ${S.draft.zai ? '斋 ✅' : '飞'
+        }</button>
+        <button class="btn b-gold" onclick="doBid()" style="flex:2">叫 ${S.draft.count} 个 ${S.draft.face}</button>
+      </div>
+      ${b ? `<div class="row">
+        <button class="btn b-ghost b-sm" onclick="doPi()">劈 ×2</button>
+        <button class="btn b-red b-sm" onclick="doChallenge()" style="flex:1.6">开！</button>
+      </div>` : ''}
+    `;
+    return;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════
+   流程
+   ══════════════════════════════════════════════════════════ */
+function startGame(n){
+  S.n = n;
+  S.players = NAMES.slice(0, n).map(name => ({
+    name, dice: Array.from({length: DICE_PER}, rnd6), sips: 0
+  }));
+  S.round = 1;
+  S.bid = null;
+  S.mult = 1;
+  S.chal = null;
+  S.draft = null;
+  S.turn = 0;
+  S.peekIdx = 0;
+  S.phase = 'peek';
+  document.getElementById('boot').classList.add('gone');
+  setTimeout(()=>{ document.getElementById('boot').style.display = 'none'; }, 420);
+  render();
+}
+
+let peekTimer = null;
+function showMine(){
+  const pl = S.players[S.peekIdx];
+  $('stage').innerHTML = `
+    <div id="hint" style="color:var(--jade);font-weight:800;font-size:15px">${pl.name} 的骰子</div>
+    <div class="drow">${pl.dice.map(v => dieHTML(v, {wild: true})).join('')}</div>
+    <div id="timer"><i id="timerBar"></i></div>
+    <div id="hint" style="font-size:11.5px">记住后点下面按钮盖起来</div>
+  `;
+  $('ctrl').innerHTML = `<div class="row">
+    <button class="btn b-jade" onclick="hideMine()">记住了 →</button>
+  </div>`;
+
+  /* 6 秒强制自动收起，防止忘记盖 */
+  clearTimeout(peekTimer);
+  const bar = $('timerBar');
+  let t0 = performance.now();
+  const tickBar = () => {
+    if(!document.getElementById('timerBar')) return;
+    const k = Math.max(0, 1 - (performance.now() - t0) / 6000);
+    document.getElementById('timerBar').style.transform = `scaleX(${k})`;
+    if(k <= 0){ hideMine(); return; }
+    requestAnimationFrame(tickBar);
+  };
+  requestAnimationFrame(tickBar);
+  peekTimer = setTimeout(hideMine, 6000);
+}
+
+function hideMine(){
+  clearTimeout(peekTimer);
+  S.peekIdx++;
+  if(S.peekIdx >= S.n){
+    S.phase = 'bid';
+    S.turn = 0;
+    S.draft = null;
+  }
+  render();
+}
+
+function stepCount(d){
+  S.draft.count = Math.max(1, S.draft.count + d);
+  render();
+}
+function stepFace(d){
+  S.draft.face = Math.min(6, Math.max(1, S.draft.face + d));
+  render();
+}
+function toggleZai(){
+  S.draft.zai = !S.draft.zai;
+  render();
+}
+
+function doBid(){
+  const d = S.draft;
+  /* 合法性：叫斋时个数不能少于人头数，且点数为 1 时至少人头数 */
+  if(d.zai && d.face === 1 && d.count < S.n){
+    alert(`叫斋的 1 至少要 ${S.n} 个（人头数）`);
+    return;
+  }
+  S.bid = {count: d.count, face: d.face, zai: d.zai, by: S.turn};
+  S.mult = 1;
+  S.turn = (S.turn + 1) % S.n;
+  S.draft = null;
+  render();
+}
+
+function doPi(){
+  if(!S.bid) return;
+  S.mult = S.mult === 1 ? 2 : (S.mult === 2 ? 4 : 8);
+  alert(`已经劈到 ${S.mult} 倍`);
+  render();
+}
+
+function doChallenge(){
+  if(!S.bid) return;
+  S.chal = S.turn;
+  S.phase = 'reveal';
+  reveal();
+}
+
+/* ══════════════════════════════════════════════════════════
+   开骰结算
+   ══════════════════════════════════════════════════════════ */
+function countFace(face, zai){
+  /* 统计全场该点数个数。非斋时 1 也算（但叫的是 1 时本身就算） */
+  let total = 0;
+  for(const p of S.players){
+    for(const v of p.dice){
+      if(v === face) total++;
+      else if(!zai && face !== 1 && v === 1) total++;
+    }
+  }
+  return total;
+}
+
+function reveal(){
+  const b = S.bid;
+  const actual = countFace(b.face, b.zai);
+  const ok = actual >= b.count;           // 叫的人说的是不是真的
+
+  /* 谁喝 */
+  const bidder = S.players[b.by];
+  const challenger = S.players[S.chal];
+  const loser = ok ? challenger : bidder;
+
+  /* 加倍规则（粤港澳常见） */
+  let mult = S.mult;
+  let notes = [];
+  /* 不够一半 → 叫的人加倍 */
+  if(!ok && actual < b.count / 2){
+    mult *= 2;
+    notes.push(`实际只有 ${actual} 个，不到叫数的一半 → 叫骰者加倍`);
+  }
+  /* 超一倍 → 开的人加倍 */
+  if(ok && actual > b.count * 2){
+    mult *= 2;
+    notes.push(`实际有 ${actual} 个，超过叫数一倍 → 开骰者加倍`);
+  }
+  loser.sips += mult;
+
+  /* 渲染结算 */
+  const rows = S.players.map(p => {
+    const hit = p.dice.filter(v => v === b.face || (!b.zai && b.face !== 1 && v === 1)).length;
+    return `<div class="revRow">
+      <div class="nm" ${p === loser ? 'style="color:var(--red)"' : ''}>${p.name}</div>
+      <div class="ds">${p.dice.map(v => {
+        const isHit = v === b.face || (!b.zai && b.face !== 1 && v === 1);
+        return `<div style="opacity:${isHit?1:.34};transform:scale(${isHit?1:.86})">
+          ${dieHTML(v, {sm:true})}</div>`;
+      }).join('')}</div>
+      <div class="hit">${hit}个</div>
+    </div>`;
+  }).join('');
+
+  $('mcard').innerHTML = `
+    <h2 style="color:${ok?'var(--jade)':'var(--red)'}">${ok ? '叫中了' : '吹牛被抓'}</h2>
+    <div class="sub">${bidder.name} 叫 ${b.count} 个 ${b.face}${b.zai?'（斋）':'（飞）'} · 实际 ${actual} 个</div>
+    ${rows}
+    <div style="margin-top:16px;padding:13px;border-radius:12px;
+      background:rgba(232,68,63,.1);border-left:3px solid var(--red);font-size:14px;line-height:1.6">
+      <b style="color:var(--red)">${loser.name} 喝 ${mult} 杯</b><br>
+      <span style="font-size:12px;color:var(--dim)">
+        ${notes.length ? notes.join('；') : (ok ? '叫得属实 → 开的人喝' : '虚报 → 叫的人喝')}
+      </span>
+    </div>
+    <button class="btn b-gold" onclick="nextRound()">下一局</button>
+  `;
+  $('modal').classList.add('on');
+}
+
+function nextRound(){
+  $('modal').classList.remove('on');
+  S.round++;
+  /* 输的人先叫 */
+  const b = S.bid;
+  const ok = countFace(b.face, b.zai) >= b.count;
+  S.turn = ok ? S.chal : b.by;
+  S.players.forEach(p => p.dice = Array.from({length: DICE_PER}, rnd6));
+  S.bid = null; S.mult = 1; S.chal = null; S.draft = null;
+  S.peekIdx = 0;
+  S.phase = 'peek';
+  render();
+}
+
+/* ══════════════════════════════════════════════════════════
+   开场
+   ══════════════════════════════════════════════════════════ */
+let chosen = 0;
+const cntBox = $('cntBox');
+for(let n = 2; n <= 6; n++){
+  const b = document.createElement('button');
+  b.textContent = `${n} 人`;
+  b.onclick = () => {
+    chosen = n;
+    [...cntBox.children].forEach(c => c.classList.remove('on'));
+    b.classList.add('on');
+    $('go').disabled = false;
+    $('go').textContent = `开 ${n} 人局`;
+  };
+  cntBox.appendChild(b);
+}
+$('go').onclick = () => startGame(chosen);
+
+/* 调试出口 */
+window.__S = S;
+window.__api = { startGame, doBid, doChallenge, stepCount, stepFace, toggleZai, hideMine, nextRound, countFace };
+</script>
+</body>
+</html>
