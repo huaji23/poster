@@ -135,7 +135,7 @@
   <span class="rclbl" id="fineVal">0°</span>
 </div>
 
-<div id="msg">① 左右滑屏幕瞄准　② 下拉左边力度杆　③ 松手出杆</div>
+<div id="msg">① 绕白球滑动转杆 / 点一下直接指过去　② 下拉左边力度杆　③ 松手出杆</div>
 
 <div id="bar">
   <button id="btnRules">规则</button>
@@ -1877,7 +1877,7 @@ function showRules(){
 <b>白球落袋</b><br>不罚，白球会自动回到台面，你可以直接拖到想放的位置继续打。<br><br>
 <b>建议顺序</b><br>顶部会提示「下一个 N 号」，按号码从小到大打，练走位最有效。<br><br>
 <b>操作</b><br>
-① 左右滑台面 → 转动球杆方向（也可以直接点你想打的点）<br>
+① 手指<b>绕白球滑动</b> → 球杆跟着手势转；<b>点一下</b>某个点 → 杆直接指过去<br>
 ② <b>下拉</b>左边的<span style="color:#7ee8a2">力度杆</span> → 拉杆蓄力，拉得越下力越大<br>
 ③ 松手就出杆<br><br>
 <b>右侧两件</b><br>
@@ -1895,6 +1895,7 @@ function showRules(){
    输入
    ══════════════════════════════════════════════════════════ */
 let dragStart = null;
+const TAP_SLOP = 7;        // 屏幕像素：手指移动超过这个才算「滑动」，否则算「点一下」
 
 function evPos(e){
   const t = e.touches ? e.touches[0] : e;
@@ -1918,9 +1919,17 @@ function onDown(e){
     return;
   }
 
-  dragStart = { sx: p.x, sy: p.y, wx: w.x, wz: w.z };
+  /* 按下时【绝对不动方向】。
+     以前一按下就把杆指向手指所在点 —— 可是手指本来就压在杆上（白球后方），
+     于是杆瞬间翻到对面。这是最反直觉的地方。 */
+  const ang = aimAngleTo(w);
+  dragStart = {
+    sx: p.x, sy: p.y,
+    ang: ang,
+    baseAng: Math.atan2(aimBase.z, aimBase.x),
+    moved: false
+  };
   aiming = true;
-  updateAimFrom(w);
 }
 
 function onMove(e){
@@ -1930,7 +1939,23 @@ function onMove(e){
   const w = screenToWorld(p.x, p.y);
 
   if(placing){ tryPlaceCue(w); return; }
-  updateAimFrom(w);
+  if(!dragStart) return;
+
+  const dpx = Math.hypot(p.x - dragStart.sx, p.y - dragStart.sy);
+  if(!dragStart.moved){
+    if(dpx < TAP_SLOP) return;          // 还在「点击」容差内，杆不动
+    dragStart.moved = true;             // 越过容差：判定为滑动，但基准仍用按下那一刻
+  }
+
+  const ang = aimAngleTo(w);
+  if(ang === null || dragStart.ang === null) return;
+  // 手指绕白球转了多少度，杆就跟着转多少度（微调偏移保留）
+  const delta = normAngle(ang - dragStart.ang);
+  aimBase = {
+    x: Math.cos(dragStart.baseAng + delta),
+    z: Math.sin(dragStart.baseAng + delta)
+  };
+  applyAim();
 }
 
 /* 大方向 + 微调偏移 = 最终杆向（偏移无上限，可以转满一圈） */
@@ -1940,16 +1965,13 @@ function applyAim(){
   drawFineBar();
 }
 
-function updateAimFrom(w){
+/* 从白球指向某个世界点的角度；太近就返回 null */
+function aimAngleTo(w){
   const cb = cueBall();
-  if(!cb) return;
-  // 左右滑屏幕只改大方向，力度由左边的力度杆负责（跟腾讯桌球一致）
-  let dx = w.x - cb.x, dz = w.z - cb.z;
-  const len = Math.hypot(dx, dz);
-  if(len < 0.012) return;
-  aimBase = { x: dx/len, z: dz/len };
-  aimOffset = 0;            // 重新滑方向 → 微调归零
-  applyAim();
+  if(!cb) return null;
+  const dx = w.x - cb.x, dz = w.z - cb.z;
+  if(Math.hypot(dx, dz) < 0.012) return null;
+  return Math.atan2(dz, dx);
 }
 
 function onUp(e){
@@ -1962,9 +1984,20 @@ function onUp(e){
     return;
   }
   if(!aiming) return;
+  /* 没滑动就松手 = 点了一下 → 直接把杆指到那个点（快速指定位置），微调归零 */
+  if(dragStart && !dragStart.moved && e){
+    const p = evPos(e);
+    const w = screenToWorld(p.x, p.y);
+    const a = aimAngleTo(w);
+    if(a !== null){
+      aimBase = { x: Math.cos(a), z: Math.sin(a) };
+      aimOffset = 0;
+      applyAim();
+    }
+  }
   aiming = false;
   dragStart = null;
-  // 松手不再击球 —— 力度和出手都由左边的力度杆负责
+  // 松手不出杆 —— 力度和出手都由左边的力度杆负责
 }
 
 function doShoot(){
@@ -2055,7 +2088,7 @@ function newGame(){
   drawPowerBar();
   drawSpinBall();
   drawFineBar();
-  toast('左右滑屏幕瞄准 · 下拉左边力度杆出杆 · 右边加塞+微调');
+  toast('绕白球滑动转杆 · 点一下直接指过去 · 下拉左边力度杆出杆');
 }
 
 /* ══════════════════════════════════════════════════════════
@@ -2244,6 +2277,8 @@ window.__G = {
   get spinY(){ return spinY; },
   get aimOffset(){ return aimOffset; },
   get aimDeg(){ return +(aimOffset * 180 / Math.PI).toFixed(1); },
+  get aimDir(){ return { x: aimDir.x, z: aimDir.z }; },
+  get aimDegAbs(){ return +(Math.atan2(aimDir.z, aimDir.x) * 180 / Math.PI).toFixed(1); },
   setFine(deg){ aimOffset = normAngle(deg * Math.PI/180); applyAim(); },
   get firstHit(){ return shotLog ? shotLog.firstHit : null; },
   get lastPotted(){ return shotLog ? shotLog.potted.slice() : null; },
