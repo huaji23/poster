@@ -168,10 +168,13 @@ window.addEventListener('unhandledrejection', function(e){
    ══════════════════════════════════════════════════════════ */
 
 /* ── 台面尺寸 ── */
-const TABLE_W = 2.24, TABLE_H = 1.12;
+const TABLE_W = 2.54, TABLE_H = 1.27;    // 中式八球标准内沿 2540×1270mm
 const HW = TABLE_W/2, HH = TABLE_H/2;
-const BALL_R = 0.040;            // 按真实比例球太小了，放大 1.4 倍才符合「常理」
-const POCKET_R = 0.072;          // 2D 玩法放宽一点，判定更友好
+const BALL_R = 0.0286;           // 球直径 57.2mm（中台协标准，别再放大了 —— 会让整张台面显得拥挤）
+/* 袋口：中台协标准 角袋口 105mm、中袋口 120mm（腰袋比角袋宽 15mm）
+   相对于 57.2mm 的球 = 1.835 倍 / 2.10 倍，与世界台联「袋口=球径 1.6 倍」同一取向 */
+const PCK_CORNER = 0.0525;       // 角袋口半径（105mm 开口的一半）
+const PCK_SIDE   = 0.0600;       // 中袋口半径（120mm 开口的一半）
 const RAIL_W = 0.13;             // 库边宽
 const CUSHION = 0.87;            // 旧常量（已被 E_CUSH 取代，保留兼容）
 const BALL_DAMP = 0.96;          // 旧常量（已被 E_BALL 取代）
@@ -196,8 +199,8 @@ const SLIDE_EPS  = 0.012;   // 接触点速度低于这个就算纯滚动
 
 /* 六个袋口：四角 + 两个中袋 */
 const POCKETS = [
-  [-HW, -HH], [0, -HH], [HW, -HH],
-  [-HW,  HH], [0,  HH], [HW,  HH],
+  [-HW, -HH, PCK_CORNER], [0, -HH, PCK_SIDE], [HW, -HH, PCK_CORNER],
+  [-HW,  HH, PCK_CORNER], [0,  HH, PCK_SIDE], [HW,  HH, PCK_CORNER],
 ];
 
 /* 球色 */
@@ -307,10 +310,10 @@ function layout(){
   cv.style.width  = LW + 'px';
   cv.style.height = LH + 'px';
 
-  const PAD_L = 50;    // 左侧力度杆
-  const PAD_R = 74;    // 右侧加塞球 + 微调
-  const PAD_T = 6;     // 顶部不留东西了
-  const PAD_B = 26;    // 底部两个小按钮
+  const PAD_L = 47;    // 左侧力度杆
+  const PAD_R = 64;    // 右侧加塞球 + 微调
+  const PAD_T = 4;     // 顶部不留东西了
+  const PAD_B = 24;    // 底部两个小按钮
 
   const availW = Math.max(120, LW - PAD_L - PAD_R);
   const availH = Math.max(100, LH - PAD_T - PAD_B);
@@ -600,8 +603,8 @@ function stepPhysics(dt){
 
     /* 落袋先于「是否静止」判断 —— 否则一颗正好停在袋口的球会永远卡住 */
     let potted = false;
-    for(const [px, pz] of POCKETS){
-      if(Math.hypot(b.x - px, b.z - pz) < POCKET_R * 0.88){
+    for(const [px, pz, pr] of POCKETS){
+      if(Math.hypot(b.x - px, b.z - pz) < pr * 0.90){
         b.alive = false; b.vx = 0; b.vz = 0; b.wx = 0; b.wz = 0; b.wy = 0;
         addSink(b.x, b.z, b.n);
         addImpact(b.x, b.z, 0.95);
@@ -670,8 +673,8 @@ function stepPhysics(dt){
     }
 
     // 库边（袋口附近不放库，让球能进袋）
-    const nearPocketX = Math.abs(Math.abs(b.x) - HW) < POCKET_R*1.15;
-    const nearPocketZ = Math.abs(Math.abs(b.z) - HH) < POCKET_R*1.15;
+    const nearPocketX = Math.abs(Math.abs(b.x) - HW) < PCK_CORNER*1.20;
+    const nearPocketZ = Math.abs(Math.abs(b.z) - HH) < PCK_CORNER*1.20;
 
     let bounced = false;
     /* 库边：法向恢复(E_CUSH) + 切向摩擦(MU_CUSH) + 侧旋甩球
@@ -1059,15 +1062,16 @@ function drawTable(c){
   const OUT_W    = RAIL_W + 0.002;     // 金属外缘和桌子外沿齐平，不甩出去
   const R_OUT    = 0.040;              // 外角圆角（原来 0.085 太肿）
   const R_IN     = 0.009;
-  const HR       = POCKET_R * 0.98;    // 洞半径
-  const PLATE_IN = HR * 0.62;          // 金属向台内伸多少（必须 < 0.707*HR，内角才被圆吃掉）
-
-  for(const [px, pz] of POCKETS){
+  // 洞半径按每个袋口自己的开口算（下面循环里 per-pocket 取值）
+  
+  for(const [px, pz, pr] of POCKETS){
     const isCorner = (px !== 0);
     const sx = isCorner ? Math.sign(px) : 0;
     const sz = Math.sign(pz);
     // 洞心压在台角 / 库边线上：洞比金属略大，外圈留一圈窄边
     const hx = px, hz = pz;
+    const HR = pr * 0.98;
+    const PLATE_IN = HR * 0.62;   // 金属向台内伸多少（必须 < 0.707*HR，内角才被圆吃掉）
     const rx = HR, rz = HR;    // 六个袋口全都是正圆（中袋不是扁的）
 
     c.save();
@@ -1216,11 +1220,11 @@ function drawBall(c, b){
   if(b.trail && b.trail.length > 1){
     for(let i = 1; i < b.trail.length; i++){
       const t = b.trail[i];
-      const a = (1 - i/b.trail.length) * 0.30 * t.a;
+      const a = (1 - i/b.trail.length) * 0.42 * t.a;
       if(a <= 0.01) continue;
       c.save();
       c.globalAlpha = a;
-      c.fillStyle = b.n === 0 ? '#f6f3e8' : col;
+      c.fillStyle = b.n === 0 ? '#fffdf4' : col;
       const rr = r * (1 - i*0.055);
       c.beginPath(); c.arc(t.x, t.z, rr, 0, Math.PI*2); c.fill();
       c.restore();
@@ -1247,13 +1251,33 @@ function drawBall(c, b){
   c.beginPath(); c.arc(b.x, b.z, r, 0, Math.PI*2); c.clip();
 
   if(b.n === 0){
-    // 白球：偏暖的高光白
-    const bg = c.createLinearGradient(0, b.z - r, 0, b.z + r);
-    bg.addColorStop(0,   '#ffffff');
-    bg.addColorStop(0.45,'#f6f3e8');
-    bg.addColorStop(1,   '#cfc9b6');
+    /* 白球不是纯白：真实台球是象牙白 + 一层蜡质光泽 */
+    const bg = c.createLinearGradient(b.x - r*0.3, b.z - r, b.x + r*0.3, b.z + r);
+    bg.addColorStop(0,    '#ffffff');
+    bg.addColorStop(0.30, '#fbf7ec');
+    bg.addColorStop(0.62, '#eee8d8');
+    bg.addColorStop(1,    '#c8c1ad');
     c.fillStyle = bg;
     c.fillRect(b.x - r, b.z - r, r*2, r*2);
+
+    /* 表面微瑕：几个极淡的斑点，随滚动在球面上移动。
+       没有这个，白球平移时整块明暗一起走，看起来就是一坨圆圈在滑。 */
+    const ph0  = b.roll || 0;
+    const dir0 = b.rollDir || 0;
+    for(let i = 0; i < 3; i++){
+      const q    = ph0 + i*2.094;
+      const face = Math.cos(q);                 // 1=正对镜头，-1=转到背面
+      if(face < 0.15) continue;                 // 背面就不画
+      const along = Math.sin(q) * r * 0.60;     // 沿滚动方向位移
+      const ox = b.x + Math.cos(dir0) * along;
+      const oz = b.z + Math.sin(dir0) * along;
+      const rad = r * (0.17 + face*0.10);
+      const g2 = c.createRadialGradient(ox, oz, 0, ox, oz, rad);
+      g2.addColorStop(0, `rgba(202,192,168,${(0.11*face).toFixed(3)})`);
+      g2.addColorStop(1, 'rgba(202,192,168,0)');
+      c.fillStyle = g2;
+      c.beginPath(); c.arc(ox, oz, rad, 0, Math.PI*2); c.fill();
+    }
   } else if(striped){
     // 白底 + 中间色带（色带本身也有明暗，不然是死板的一条）
     c.fillStyle = '#f8f5ec';
@@ -1295,24 +1319,46 @@ function drawBall(c, b){
   c.fillStyle = rf;
   c.fillRect(b.x - r, b.z - r, r*2, r*2);
 
-  /* ⑤ 主高光（镜面反射）+ 次高光小点 */
-  const hl = c.createRadialGradient(
-    b.x - r*0.36, b.z - r*0.44, 0,
-    b.x - r*0.36, b.z - r*0.44, r*0.42);
-  hl.addColorStop(0,   'rgba(255,255,255,1)');
-  hl.addColorStop(0.38,'rgba(255,255,255,.58)');
-  hl.addColorStop(1,   'rgba(255,255,255,0)');
-  c.fillStyle = hl;
-  c.beginPath(); c.arc(b.x - r*0.36, b.z - r*0.44, r*0.42, 0, Math.PI*2); c.fill();
+  /* ⑤ 镜面反射：顶灯倒影带 + 锐利主高光 + 次高光
+     —— 主高光原来给到 r*0.42 的大柔光，那是「磨砂球」；
+        抛光球的特征是「小而锐的亮点」，这才是质感的来源。 */
+  // 顶灯倒影：球上半部一条横向亮带（灯管的倒影）
+  const lampY = b.z - r*0.58;
+  const lampRef = c.createLinearGradient(0, lampY - r*0.26, 0, lampY + r*0.26);
+  lampRef.addColorStop(0,    'rgba(255,255,255,0)');
+  lampRef.addColorStop(0.42, 'rgba(255,255,255,.30)');
+  lampRef.addColorStop(0.58, 'rgba(255,255,255,.24)');
+  lampRef.addColorStop(1,    'rgba(255,255,255,0)');
+  c.fillStyle = lampRef;
+  c.beginPath();
+  c.ellipse(b.x - r*0.08, lampY, r*0.62, r*0.26, 0, 0, Math.PI*2);
+  c.fill();
 
-  c.fillStyle = 'rgba(255,255,255,.80)';
-  c.beginPath(); c.arc(b.x + r*0.30, b.z - r*0.33, r*0.080, 0, Math.PI*2); c.fill();
+  // 主高光：小而锐
+  const hx = b.x - r*0.34, hz = b.z - r*0.44;
+  const hl = c.createRadialGradient(hx, hz, 0, hx, hz, r*0.21);
+  hl.addColorStop(0,    'rgba(255,255,255,1)');
+  hl.addColorStop(0.50, 'rgba(255,255,255,.88)');
+  hl.addColorStop(1,    'rgba(255,255,255,0)');
+  c.fillStyle = hl;
+  c.beginPath(); c.arc(hx, hz, r*0.21, 0, Math.PI*2); c.fill();
+
+  // 主高光外的柔晕（有它才像「一层蜡」而不是一个白点）
+  const halo = c.createRadialGradient(hx, hz, r*0.15, hx, hz, r*0.50);
+  halo.addColorStop(0, 'rgba(255,255,255,.26)');
+  halo.addColorStop(1, 'rgba(255,255,255,0)');
+  c.fillStyle = halo;
+  c.beginPath(); c.arc(hx, hz, r*0.50, 0, Math.PI*2); c.fill();
+
+  // 次高光小点
+  c.fillStyle = 'rgba(255,255,255,.88)';
+  c.beginPath(); c.arc(b.x + r*0.32, b.z - r*0.30, r*0.062, 0, Math.PI*2); c.fill();
 
   c.restore();
 
   /* ⑥ 轮廓 */
-  c.strokeStyle = 'rgba(0,0,0,.40)';
-  c.lineWidth = 0.0019;
+  c.strokeStyle = 'rgba(0,0,0,.20)';
+  c.lineWidth = 0.0015;
   c.beginPath(); c.arc(b.x, b.z, r*0.985, 0, Math.PI*2); c.stroke();
 
   /* ⑦ 数字盘：跟着球的滚动一起位移、缩小、淡出（转到背面就看不见） */
@@ -1892,24 +1938,24 @@ function drawFineBar(){
 /* 中央水印：画在屏幕坐标系里，竖屏旋转后字也是正的 */
 function drawWatermark(c){
   const p = worldToScreen(0, 0);
-  const R = 0.20 * SCALE;
+  const R = 0.165 * SCALE;
   setScreenTransform();
   c.save();
   c.textAlign = 'center';
   c.textBaseline = 'middle';
 
-  c.globalAlpha = 0.085;
+  c.globalAlpha = 0.042;
   c.strokeStyle = '#03130a';
-  c.lineWidth = Math.max(1.5, 0.012 * SCALE);
+  c.lineWidth = Math.max(1.3, 0.010 * SCALE);
   c.beginPath(); c.arc(p.x, p.y, R, 0, Math.PI*2); c.stroke();
   c.beginPath(); c.arc(p.x, p.y, R*0.86, 0, Math.PI*2); c.stroke();
 
   c.fillStyle = '#03130a';
-  c.font = `900 ${R*1.42}px -apple-system,"PingFang SC","Noto Sans CJK SC",sans-serif`;
+  c.font = `900 ${R*1.34}px -apple-system,"PingFang SC","Noto Sans CJK SC",sans-serif`;
   c.fillText('中 八', p.x, p.y - R*0.06);
 
-  c.font = `700 ${Math.max(7, R*0.26)}px -apple-system,Arial,sans-serif`;
-  c.fillText('E I G H T   B A L L', p.x, p.y + R*0.95);
+  c.font = `700 ${Math.max(6, R*0.24)}px -apple-system,Arial,sans-serif`;
+  c.fillText('E I G H T   B A L L', p.x, p.y + R*0.92);
   c.restore();
 }
 
