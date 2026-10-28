@@ -43,10 +43,14 @@
            border-radius:9px;padding:1px 8px;white-space:nowrap}
   #turnTag.ai{color:#ffcc4d;border-color:rgba(255,204,77,.45);background:rgba(28,20,6,.75)}
 
-  /* ── 右侧：力度尺 ── */
-  #powerWrap{position:fixed;right:8px;top:50%;transform:translateY(-50%);
-             z-index:10;pointer-events:none;width:26px}
-  #powerBar{width:26px;height:190px;display:block}
+  /* ── 右侧：力度尺（可拖动，松手即击球） ── */
+  #powerWrap{position:fixed;right:4px;top:50%;transform:translateY(-50%);
+             z-index:10;pointer-events:auto;touch-action:none;cursor:pointer;
+             padding:6px;border-radius:18px;
+             background:rgba(18,14,38,.42);
+             border:1px solid rgba(255,255,255,.12);
+             box-shadow:0 4px 16px rgba(0,0,0,.35)}
+  #powerBar{width:26px;height:190px;display:block;pointer-events:none}
 
   /* ── 底部按钮 ── */
   #bar{position:fixed;left:50%;transform:translateX(-50%);bottom:8px;
@@ -116,7 +120,7 @@
 
 <div id="powerWrap"><canvas id="powerBar"></canvas></div>
 
-<div id="msg">按住台面拖动瞄准，拖得越远力越大，松手击球</div>
+<div id="msg">① 拖台面瞄准　② 上下拖右侧力度尺　③ 松手击球</div>
 
 <div id="bar">
   <button id="btnRules">规则</button>
@@ -538,93 +542,93 @@ function drawTable(c){
     }
   }
 
-  /* ── 袋口：金属包角（外角大圆角 + 内牙）+ 斜切牙口 + 洞 ── */
-  const OUT_W = RAIL_W + 0.014;   // 包角向外延伸
-  const IN_W  = 0.082;            // 包角向台内延伸 —— 必须大于"洞半径 - 洞偏移"，否则洞会漏到台呢上
-  const R_OUT = 0.085;            // 外角大圆角
-  const R_IN  = 0.012;            // 内角小圆角
+  /* ── 袋口：金属包角 = 圆角板 − 椭圆洞（evenodd）──
+     关键：内缘直接等于洞的轮廓，所以不可能出现「白色方框里包个蛋、四角还露着」 */
+  const OUT_W    = RAIL_W + 0.014;
+  const R_OUT    = 0.085;
+  const R_IN     = 0.010;
+  const HR       = POCKET_R * 0.98;    // 洞半径
+  const PLATE_IN = HR * 0.62;          // 板子向台内只伸到圆里面 → 内角一定被切掉
 
   for(const [px, pz] of POCKETS){
     const isCorner = (px !== 0);
+    // 洞心：角袋稍微往外挪，中袋就在袋心
+    const hx = px + (isCorner ? Math.sign(px)*0.006 : 0);
+    const hz = pz + Math.sign(pz)*0.006;
+    const rx = isCorner ? HR : HR * 1.10;
+    const rz = isCorner ? HR : HR * 0.86;
+
     c.save();
 
+    /* 1) 板子轮廓 */
     if(isCorner){
       const sx = Math.sign(px), sz = Math.sign(pz);
-      const x0 = Math.min(px - sx*IN_W, px + sx*OUT_W);
-      const x1 = Math.max(px - sx*IN_W, px + sx*OUT_W);
-      const z0 = Math.min(pz - sz*IN_W, pz + sz*OUT_W);
-      const z1 = Math.max(pz - sz*IN_W, pz + sz*OUT_W);
-      // 外角那个角给大圆角，其余给小的
+      const x0 = Math.min(hx - sx*PLATE_IN, hx + sx*OUT_W);
+      const x1 = Math.max(hx - sx*PLATE_IN, hx + sx*OUT_W);
+      const z0 = Math.min(hz - sz*PLATE_IN, hz + sz*OUT_W);
+      const z1 = Math.max(hz - sz*PLATE_IN, hz + sz*OUT_W);
       const rBR = (sx > 0 && sz > 0) ? R_OUT : R_IN;
       const rBL = (sx < 0 && sz > 0) ? R_OUT : R_IN;
       const rTR = (sx > 0 && sz < 0) ? R_OUT : R_IN;
       const rTL = (sx < 0 && sz < 0) ? R_OUT : R_IN;
-
       perCornerRect(c, x0, z0, x1-x0, z1-z0, rTL, rTR, rBR, rBL);
     } else {
+      // 中袋：金属只留在木库侧 —— 从洞心开始，一点都别往台呢上伸
       const sz = Math.sign(pz);
-      const z0 = Math.min(pz - sz*IN_W, pz + sz*OUT_W);
-      const z1 = Math.max(pz - sz*IN_W, pz + sz*OUT_W);
-      roundRectPath(c, -0.088, z0, 0.176, z1-z0, 0.030);
+      const zA = hz, zB = hz + sz*OUT_W;
+      const z0 = Math.min(zA, zB), z1 = Math.max(zA, zB);
+      roundRectPath(c, -0.105, z0, 0.210, z1-z0, 0.024);
     }
 
-    // 投影：让包角看起来是"盖"在台呢上，而不是贴上去
+    /* 2) 减去洞 → 包角内缘变成圆弧 */
+    c.moveTo(hx + rx, hz);
+    c.ellipse(hx, hz, rx, rz, 0, 0, Math.PI*2, true);
+
+    // 投影
     c.save();
     c.translate(0.007, 0.008);
-    c.fillStyle = 'rgba(0,0,0,.32)';
-    c.fill();
+    c.fillStyle = 'rgba(0,0,0,.34)';
+    c.fill('evenodd');
     c.restore();
 
-    // 金属质感
-    const mg = c.createLinearGradient(px - OUT_W, pz - OUT_W, px + OUT_W, pz + OUT_W);
-    mg.addColorStop(0,    '#f4f7fa');
-    mg.addColorStop(0.28, '#cfd8e0');
-    mg.addColorStop(0.55, '#9aa6b2');
-    mg.addColorStop(0.8,  '#c2ccd6');
-    mg.addColorStop(1,    '#6d7883');
+    // 金属面
+    const mg = c.createLinearGradient(hx - OUT_W, hz - OUT_W, hx + OUT_W, hz + OUT_W);
+    mg.addColorStop(0,    '#f6f9fc');
+    mg.addColorStop(0.28, '#d3dbe3');
+    mg.addColorStop(0.55, '#9da9b5');
+    mg.addColorStop(0.8,  '#c6d0da');
+    mg.addColorStop(1,    '#6b7681');
     c.fillStyle = mg;
-    c.fill();
-    c.strokeStyle = 'rgba(35,45,58,.55)';
-    c.lineWidth = 0.0035;
+    c.fill('evenodd');
+    c.strokeStyle = 'rgba(30,40,52,.6)';
+    c.lineWidth = 0.0032;
     c.stroke();
 
-    // 左上内斜边高光
+    // 内缘高光（裁剪到金属面上，往左上偏一点）
     c.save();
-    c.clip();
-    c.strokeStyle = 'rgba(255,255,255,.75)';
+    c.clip('evenodd');
+    c.strokeStyle = 'rgba(255,255,255,.7)';
     c.lineWidth = 0.0045;
     c.translate(-0.0035, -0.0040);
     c.stroke();
     c.restore();
 
-    /* 洞：装在包角里，不是随便贴个圆 */
-    const hx = px + (isCorner ? Math.sign(px)*0.008 : 0);
-    const hz = pz + (isCorner ? Math.sign(pz)*0.008 : Math.sign(pz)*0.008);
-    const hrx = POCKET_R * (isCorner ? 0.94 : 1.06);
-    const hrz = POCKET_R * (isCorner ? 0.94 : 0.80);
-
-    // 洞口内阴影（贴着洞一圈，不要太大）
-    c.beginPath();
-    c.ellipse(hx, hz, hrx*1.05, hrz*1.05, 0, 0, Math.PI*2);
-    c.fillStyle = 'rgba(0,0,0,.42)';
-    c.fill();
-
-    // 洞本体（棕黑，左上略亮）
-    const hg = c.createRadialGradient(hx - hrx*0.30, hz - hrz*0.34, hrx*0.04, hx, hz, hrx);
-    hg.addColorStop(0,    '#4a2f1e');
-    hg.addColorStop(0.28, '#2a1a10');
-    hg.addColorStop(0.62, '#120b06');
+    /* 3) 洞：正好填满被切掉的那个椭圆，边界无缝 */
+    const hg = c.createRadialGradient(hx - rx*0.30, hz - rz*0.36, rx*0.04, hx, hz, rx*1.05);
+    hg.addColorStop(0,    '#553522');
+    hg.addColorStop(0.26, '#2e1c11');
+    hg.addColorStop(0.62, '#140c07');
     hg.addColorStop(1,    '#030201');
     c.beginPath();
-    c.ellipse(hx, hz, hrx, hrz, 0, 0, Math.PI*2);
+    c.ellipse(hx, hz, rx*1.005, rz*1.005, 0, 0, Math.PI*2);
     c.fillStyle = hg;
     c.fill();
 
-    // 洞沿一圈极淡的亮边，让洞"陷"下去（别太亮，否则像贴了个白圈）
+    // 洞沿极淡亮边（只在上半圈，模拟口沿反光）
     c.beginPath();
-    c.ellipse(hx, hz, hrx*0.97, hrz*0.97, 0, Math.PI*1.15, Math.PI*1.85);
-    c.strokeStyle = 'rgba(255,255,255,.07)';
-    c.lineWidth = 0.0028;
+    c.ellipse(hx, hz, rx*0.96, rz*0.96, 0, Math.PI*1.18, Math.PI*1.82);
+    c.strokeStyle = 'rgba(255,255,255,.06)';
+    c.lineWidth = 0.0026;
     c.stroke();
 
     c.restore();
@@ -956,9 +960,24 @@ function drawPowerBar(){
   pwx.fillRect(bx, top, bw, bh);
   pwx.restore();
 
+  // 蓄力填充：从底部涨到指针位置，一眼看出当前多大的力
+  const py = top + 8 + (bh - 16) * (1 - Math.max(0, Math.min(1, power)));
+  if(power > 0.004){
+    pwx.save();
+    roundRectPath(pwx, bx, top, bw, bh, bw/2);
+    pwx.clip();
+    const fg = pwx.createLinearGradient(0, top + bh, 0, top);
+    fg.addColorStop(0,    'rgba(126,232,162,.95)');
+    fg.addColorStop(0.5,  'rgba(255,214,107,.95)');
+    fg.addColorStop(1,    'rgba(255,96,96,.97)');
+    pwx.fillStyle = fg;
+    pwx.fillRect(bx, py, bw, top + bh - py);
+    pwx.restore();
+  }
+
   // 刻度（左右交错）
   const N = 20;
-  pwx.strokeStyle = 'rgba(30,36,52,.72)';
+  pwx.strokeStyle = 'rgba(24,30,46,.78)';
   for(let i = 0; i <= N; i++){
     const y = top + 8 + (bh - 16) * (1 - i/N);
     const major = (i % 5 === 0);
@@ -971,7 +990,6 @@ function drawPowerBar(){
   }
 
   // 黄色三角指针（在左侧，尖端朝右）
-  const py = top + 8 + (bh - 16) * (1 - Math.max(0, Math.min(1, power)));
   pwx.save();
   const pg = pwx.createLinearGradient(0, py - 7, 0, py + 7);
   pg.addColorStop(0, '#ffe680');
@@ -1262,7 +1280,9 @@ function showRules(){
 <b>白球落袋</b><br>不罚，白球会自动回到台面，你可以直接拖到想放的位置继续打。<br><br>
 <b>建议顺序</b><br>顶部会提示「下一个 N 号」，按号码从小到大打，练走位最有效。<br><br>
 <b>操作</b><br>
-按住台面往你想打的方向拖，拖得越远力越大，松手击球。<br><br>
+① 在台面上拖动 → 调整球杆方向（也可以直接点你想打的那个点）<br>
+② 上下拖动右侧的<span style="color:#7ee8a2">力度尺</span> → 调整力量<br>
+③ 松手就出杆<br><br>
 <b>瞄准辅助</b><br>
 · 白虚线 = 白球飞行路线<br>
 · 白色空圈 = 幽灵球（白球撞上去那一刻的位置）<br>
@@ -1316,15 +1336,11 @@ function onMove(e){
 function updateAimFrom(w){
   const cb = cueBall();
   if(!cb) return;
-  // 方向 = 从白球指向拖动点（往想打的方向拖）
+  // 拖球桌只改方向，不改力度（力度统一由右侧力度尺控制，跟腾讯桌球一致）
   let dx = w.x - cb.x, dz = w.z - cb.z;
   const len = Math.hypot(dx, dz);
-  if(len < 0.008) return;
+  if(len < 0.012) return;
   aimDir = { x: dx/len, z: dz/len };
-  // 力度 = 拖动距离
-  const MAXPULL = 0.62;
-  power = Math.min(1, Math.max(0, (len - 0.02) / MAXPULL));
-  drawPowerBar();
 }
 
 function onUp(e){
@@ -1333,20 +1349,13 @@ function onUp(e){
     ballInHand = false;
     dragStart = null;
     updateHUD();
-    toast('白球摆好了 · 按住台面拖出去击球');
+    toast('白球摆好了 · 拖力度尺击球');
     return;
   }
   if(!aiming) return;
   aiming = false;
-
-  if(power > 0.06 && !gameOver){
-    doShoot();
-  } else {
-    power = 0;
-    drawPowerBar();
-    toast('拖远一点再松手');
-  }
   dragStart = null;
+  // 松手不再击球 —— 力度和出手都由右侧力度尺负责
 }
 
 function doShoot(){
@@ -1415,7 +1424,7 @@ function newGame(){
   lastShownSec = -1;
   updateHUD();
   drawPowerBar();
-  toast('开球 · 按住台面往球堆方向拖，松手击球');
+  toast('开球 · 拖台面瞄准，再上下拖右侧力度尺，松手出杆');
 }
 
 /* ══════════════════════════════════════════════════════════
@@ -1430,6 +1439,55 @@ cv.addEventListener('touchstart', e => { e.preventDefault(); onDown(e); }, { pas
 cv.addEventListener('touchmove',  e => { e.preventDefault(); onMove(e); }, { passive:false });
 cv.addEventListener('touchend',   e => { e.preventDefault(); onUp(e); },   { passive:false });
 cv.addEventListener('contextmenu', e => e.preventDefault());
+
+/* ── 力度尺交互：上下拖动调力度，松手击球 ── */
+let powerDragging = false;
+
+function powerFromY(clientY){
+  const r = pw.getBoundingClientRect();
+  const padTop = 10, padBot = 10;
+  const t = (clientY - r.top - padTop) / Math.max(1, r.height - padTop - padBot);
+  return Math.max(0, Math.min(1, 1 - t));    // 越往上力越大
+}
+
+function onPowerDown(e){
+  if(shooting || gameOver || placing || ballInHand) return;
+  if(e.cancelable) e.preventDefault();
+  powerDragging = true;
+  const t = e.touches ? e.touches[0] : e;
+  power = powerFromY(t.clientY);
+  drawPowerBar();
+}
+
+function onPowerMove(e){
+  if(!powerDragging) return;
+  if(e.cancelable) e.preventDefault();
+  const t = e.touches ? e.touches[0] : e;
+  power = powerFromY(t.clientY);
+  drawPowerBar();
+}
+
+function onPowerUp(e){
+  if(!powerDragging) return;
+  powerDragging = false;
+  if(power > 0.05){
+    doShoot();                 // 松手即出杆
+  } else {
+    power = 0;
+    drawPowerBar();
+  }
+}
+
+const pwWrap = document.getElementById('powerWrap');
+pwWrap.addEventListener('pointerdown', onPowerDown);
+pwWrap.addEventListener('pointermove', onPowerMove);
+pwWrap.addEventListener('pointerup',   onPowerUp);
+pwWrap.addEventListener('pointercancel', onPowerUp);
+pwWrap.addEventListener('pointerleave',  onPowerUp);
+pwWrap.addEventListener('touchstart', e => { e.preventDefault(); onPowerDown(e); }, { passive:false });
+pwWrap.addEventListener('touchmove',  e => { e.preventDefault(); onPowerMove(e); }, { passive:false });
+pwWrap.addEventListener('touchend',   e => { e.preventDefault(); onPowerUp(e); },   { passive:false });
+pwWrap.addEventListener('contextmenu', e => e.preventDefault());
 
 document.getElementById('btnRules').onclick   = showRules;
 document.getElementById('btnRestart').onclick = newGame;
