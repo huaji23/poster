@@ -17,20 +17,22 @@
   /* ── 顶部 HUD ── */
   #hud{position:fixed;top:0;left:0;right:0;z-index:10;pointer-events:none;
        display:flex;align-items:flex-start;gap:8px;padding:8px 10px}
-  .pnl{flex:1;min-width:0;display:flex;align-items:center;gap:7px;
+  .pnl{flex:1;min-width:0;display:flex;align-items:baseline;gap:6px;
        background:linear-gradient(180deg,rgba(46,56,120,.92),rgba(30,36,84,.92));
-       border:2px solid rgba(120,140,220,.35);border-radius:14px;padding:5px 9px;
-       transition:border-color .25s, box-shadow .25s}
-  .pnl.act{border-color:#7ee8a2;box-shadow:0 0 16px rgba(126,232,162,.55)}
-  .pnl .who{font-size:11px;font-weight:800;color:#c8d3f0;white-space:nowrap;letter-spacing:.5px}
-  .pnl.act .who{color:#7ee8a2}
-  .dots{display:flex;gap:4px;flex:1;justify-content:flex-end}
-  .dots i{width:13px;height:13px;border-radius:50%;
-          background:radial-gradient(circle at 34% 30%, #2b3568, #10142e);
-          border:1px solid rgba(120,140,220,.35);display:block;
-          transition:background .3s, box-shadow .3s}
-  .dots i.on{border-color:rgba(0,0,0,.5);
-             box-shadow:inset 0 2px 2px rgba(255,255,255,.45), 0 1px 3px rgba(0,0,0,.5)}
+       border:2px solid rgba(120,140,220,.35);border-radius:14px;padding:5px 11px}
+  .pnl.right{justify-content:flex-end}
+  .pnl .lbl{font-size:10.5px;font-weight:700;color:#96a2ce;white-space:nowrap;letter-spacing:.5px}
+  .pnl .big{font-size:20px;font-weight:900;color:#eaf0ff;line-height:1;
+            font-variant-numeric:tabular-nums}
+  #leftN{color:#7ee8a2}
+  #shotN{color:#ffcc4d}
+
+  /* 进球进度条 */
+  #progWrap{position:fixed;top:56px;left:12px;right:12px;height:4px;z-index:10;
+    background:rgba(255,255,255,.09);border-radius:2px;overflow:hidden;pointer-events:none}
+  #progFill{display:block;height:100%;width:0%;border-radius:2px;
+    background:linear-gradient(90deg,#7ee8a2,#ffcc4d);
+    transition:width .35s cubic-bezier(.2,.9,.25,1)}
 
   #center{display:flex;flex-direction:column;align-items:center;gap:3px;flex:0 0 auto}
   #timer{font-size:22px;font-weight:900;color:#fff;line-height:1;
@@ -97,19 +99,20 @@
 <div id="stage"><canvas id="cv"></canvas></div>
 
 <div id="hud">
-  <div class="pnl act" id="pl0">
-    <span class="who" id="who0">你</span>
-    <div class="dots" id="dots0"></div>
+  <div class="pnl">
+    <span class="lbl">剩余</span>
+    <span class="big" id="leftN">15</span>
   </div>
   <div id="center">
-    <div id="timer">--</div>
-    <div id="turnTag">你的回合</div>
+    <div id="timer">0:00</div>
+    <div id="turnTag">练习模式</div>
   </div>
-  <div class="pnl" id="pl1">
-    <div class="dots" id="dots1"></div>
-    <span class="who" id="who1">电脑</span>
+  <div class="pnl right">
+    <span class="lbl">杆数</span>
+    <span class="big" id="shotN">0</span>
   </div>
 </div>
+<div id="progWrap"><i id="progFill"></i></div>
 
 <div id="powerWrap"><canvas id="powerBar"></canvas></div>
 
@@ -186,31 +189,34 @@ let PORTRAIT = false;   // 竖屏时把台子转 90°，长边竖着放
 
 /* ══════════ 状态 ══════════ */
 let balls = [];                       // {x,z,vx,vz,n,alive}
-let turn = 0;                         // 0 你 / 1 电脑
-let groups = [null, null];            // 'solid' | 'stripe'
+/* ══════════ 状态（纯练习：一个人把 15 颗球全部打完） ══════════ */
 let ballInHand = false;
 let gameOver = false;
-let shotLog = null;                   // {firstHit,potted[],cuePotted}
+let shotLog = null;
 let shooting = false;
 let shots = 0;
 let aiming = false;
-let aimDir = {x:0, z:0};              // 单位向量
+let aimDir = { x: 0, z: 0 };
 let power = 0;
 let placing = false;
-let aiTimer = 0;
 let shotStartT = 0;
-let idleT = 0;
-let timeLeft = 24;                    // 每杆限时（秒）
-let tickT = 0;
-
-const NAMES = ['你','电脑'];
+let elapsed = 0;                          // 累计用时（秒）
+const TOTAL_BALLS = 15;
 const GROUP_CN = { solid:'全色', stripe:'花色' };
-const MOVES_TIME = 24;
 
 function groupOf(n){
   if(n === 8) return 'eight';
   if(n === 0) return 'cue';
   return n <= 7 ? 'solid' : 'stripe';
+}
+function remainingBalls(){
+  return balls.filter(b => b.alive && b.n !== 0);
+}
+/** 练习模式下一个建议打的球：剩下的号里最小的那个 */
+function nextTargetBall(){
+  const left = remainingBalls();
+  if(!left.length) return null;
+  return left.reduce((a, b) => (b.n < a.n ? b : a));
 }
 
 /* ══════════════════════════════════════════════════════════
@@ -438,6 +444,24 @@ function predictShot(){
 /* ══════════════════════════════════════════════════════════
    绘制：台子
    ══════════════════════════════════════════════════════════ */
+/* 圆角矩形（每角半径可不同）：金属包角要靠"外角大、内角小"才像真袋口 */
+function perCornerRect(c, x, y, w, h, rTL, rTR, rBR, rBL){
+  const m = Math.min(w, h) / 2;
+  rTL = Math.min(rTL, m); rTR = Math.min(rTR, m);
+  rBR = Math.min(rBR, m); rBL = Math.min(rBL, m);
+  c.beginPath();
+  c.moveTo(x + rTL, y);
+  c.lineTo(x + w - rTR, y);
+  c.arcTo(x + w, y, x + w, y + rTR, rTR);
+  c.lineTo(x + w, y + h - rBR);
+  c.arcTo(x + w, y + h, x + w - rBR, y + h, rBR);
+  c.lineTo(x + rBL, y + h);
+  c.arcTo(x, y + h, x, y + h - rBL, rBL);
+  c.lineTo(x, y + rTL);
+  c.arcTo(x, y, x + rTL, y, rTL);
+  c.closePath();
+}
+
 function roundRectPath(c, x, y, w, h, r){
   c.beginPath();
   c.moveTo(x + r, y);
@@ -462,11 +486,11 @@ function drawTable(c){
   roundRectPath(c, -ow, -oh, ow*2, oh*2, 0.055);
   c.fill();
 
-  /* 木纹细线 */
+  /* 木纹细线（很淡，别做成划痕） */
   c.save();
-  c.globalAlpha = 0.16;
-  c.strokeStyle = '#5d3512';
-  c.lineWidth = 0.0035;
+  c.globalAlpha = 0.075;
+  c.strokeStyle = '#54300f';
+  c.lineWidth = 0.0022;
   for(let i = -10; i <= 10; i++){
     const z = (i/10) * oh * 0.95;
     c.beginPath();
@@ -514,26 +538,123 @@ function drawTable(c){
     }
   }
 
-  /* 袋口 + 金属围边 */
+  /* ── 袋口：金属包角（外角大圆角 + 内牙）+ 斜切牙口 + 洞 ── */
+  const OUT_W = RAIL_W + 0.014;   // 包角向外延伸
+  const IN_W  = 0.082;            // 包角向台内延伸 —— 必须大于"洞半径 - 洞偏移"，否则洞会漏到台呢上
+  const R_OUT = 0.085;            // 外角大圆角
+  const R_IN  = 0.012;            // 内角小圆角
+
   for(const [px, pz] of POCKETS){
-    // 外圈金属
+    const isCorner = (px !== 0);
     c.save();
-    const mg = c.createRadialGradient(px - POCKET_R*0.3, pz - POCKET_R*0.3, POCKET_R*0.2, px, pz, POCKET_R*1.55);
-    mg.addColorStop(0, '#e9eef4');
-    mg.addColorStop(0.55,'#aab4c0');
-    mg.addColorStop(1, '#5a636e');
-    c.fillStyle = mg;
-    c.beginPath(); c.arc(px, pz, POCKET_R*1.42, 0, Math.PI*2); c.fill();
+
+    if(isCorner){
+      const sx = Math.sign(px), sz = Math.sign(pz);
+      const x0 = Math.min(px - sx*IN_W, px + sx*OUT_W);
+      const x1 = Math.max(px - sx*IN_W, px + sx*OUT_W);
+      const z0 = Math.min(pz - sz*IN_W, pz + sz*OUT_W);
+      const z1 = Math.max(pz - sz*IN_W, pz + sz*OUT_W);
+      // 外角那个角给大圆角，其余给小的
+      const rBR = (sx > 0 && sz > 0) ? R_OUT : R_IN;
+      const rBL = (sx < 0 && sz > 0) ? R_OUT : R_IN;
+      const rTR = (sx > 0 && sz < 0) ? R_OUT : R_IN;
+      const rTL = (sx < 0 && sz < 0) ? R_OUT : R_IN;
+
+      perCornerRect(c, x0, z0, x1-x0, z1-z0, rTL, rTR, rBR, rBL);
+    } else {
+      const sz = Math.sign(pz);
+      const z0 = Math.min(pz - sz*IN_W, pz + sz*OUT_W);
+      const z1 = Math.max(pz - sz*IN_W, pz + sz*OUT_W);
+      roundRectPath(c, -0.088, z0, 0.176, z1-z0, 0.030);
+    }
+
+    // 投影：让包角看起来是"盖"在台呢上，而不是贴上去
+    c.save();
+    c.translate(0.007, 0.008);
+    c.fillStyle = 'rgba(0,0,0,.32)';
+    c.fill();
     c.restore();
 
-    // 洞
-    const hg = c.createRadialGradient(px, pz - POCKET_R*0.25, POCKET_R*0.1, px, pz, POCKET_R*1.05);
-    hg.addColorStop(0, '#000');
-    hg.addColorStop(0.7, '#050505');
-    hg.addColorStop(1, '#1b1b1f');
+    // 金属质感
+    const mg = c.createLinearGradient(px - OUT_W, pz - OUT_W, px + OUT_W, pz + OUT_W);
+    mg.addColorStop(0,    '#f4f7fa');
+    mg.addColorStop(0.28, '#cfd8e0');
+    mg.addColorStop(0.55, '#9aa6b2');
+    mg.addColorStop(0.8,  '#c2ccd6');
+    mg.addColorStop(1,    '#6d7883');
+    c.fillStyle = mg;
+    c.fill();
+    c.strokeStyle = 'rgba(35,45,58,.55)';
+    c.lineWidth = 0.0035;
+    c.stroke();
+
+    // 左上内斜边高光
+    c.save();
+    c.clip();
+    c.strokeStyle = 'rgba(255,255,255,.75)';
+    c.lineWidth = 0.0045;
+    c.translate(-0.0035, -0.0040);
+    c.stroke();
+    c.restore();
+
+    /* 洞：装在包角里，不是随便贴个圆 */
+    const hx = px + (isCorner ? Math.sign(px)*0.008 : 0);
+    const hz = pz + (isCorner ? Math.sign(pz)*0.008 : Math.sign(pz)*0.008);
+    const hrx = POCKET_R * (isCorner ? 0.94 : 1.06);
+    const hrz = POCKET_R * (isCorner ? 0.94 : 0.80);
+
+    // 洞口内阴影（贴着洞一圈，不要太大）
+    c.beginPath();
+    c.ellipse(hx, hz, hrx*1.05, hrz*1.05, 0, 0, Math.PI*2);
+    c.fillStyle = 'rgba(0,0,0,.42)';
+    c.fill();
+
+    // 洞本体（棕黑，左上略亮）
+    const hg = c.createRadialGradient(hx - hrx*0.30, hz - hrz*0.34, hrx*0.04, hx, hz, hrx);
+    hg.addColorStop(0,    '#4a2f1e');
+    hg.addColorStop(0.28, '#2a1a10');
+    hg.addColorStop(0.62, '#120b06');
+    hg.addColorStop(1,    '#030201');
+    c.beginPath();
+    c.ellipse(hx, hz, hrx, hrz, 0, 0, Math.PI*2);
     c.fillStyle = hg;
-    c.beginPath(); c.arc(px, pz, POCKET_R*0.98, 0, Math.PI*2); c.fill();
+    c.fill();
+
+    // 洞沿一圈极淡的亮边，让洞"陷"下去（别太亮，否则像贴了个白圈）
+    c.beginPath();
+    c.ellipse(hx, hz, hrx*0.97, hrz*0.97, 0, Math.PI*1.15, Math.PI*1.85);
+    c.strokeStyle = 'rgba(255,255,255,.07)';
+    c.lineWidth = 0.0028;
+    c.stroke();
+
+    c.restore();
   }
+
+  /* 库边金属铆钉（参考图里每段木库上都有） */
+  c.save();
+  for(let i = -3; i <= 3; i++){
+    if(i === 0) continue;
+    const x = i * (HW/4);
+    for(const zz of [-HH - RAIL_W*0.72, HH + RAIL_W*0.72]){
+      const rg = c.createRadialGradient(x - 0.004, zz - 0.004, 0.0005, x, zz, 0.010);
+      rg.addColorStop(0, '#ffffff');
+      rg.addColorStop(0.5, '#c8d0d8');
+      rg.addColorStop(1, '#6b747e');
+      c.fillStyle = rg;
+      c.beginPath(); c.arc(x, zz, 0.0085, 0, Math.PI*2); c.fill();
+    }
+  }
+  for(const xx of [-HW - RAIL_W*0.72, HW + RAIL_W*0.72]){
+    for(const zz of [-HH*0.5, HH*0.5]){
+      const rg = c.createRadialGradient(xx - 0.004, zz - 0.004, 0.0005, xx, zz, 0.010);
+      rg.addColorStop(0, '#ffffff');
+      rg.addColorStop(0.5, '#c8d0d8');
+      rg.addColorStop(1, '#6b747e');
+      c.fillStyle = rg;
+      c.beginPath(); c.arc(xx, zz, 0.0085, 0, Math.PI*2); c.fill();
+    }
+  }
+  c.restore();
 }
 
 /* ── 球 ── */
@@ -625,33 +746,61 @@ function drawBallNumbers(c){
   }
 }
 
-/* ── 瞄准：白球大圆 + 幽灵球 + 走线 + 球杆 ── */
+/* ── 白球选中圈：框住球本身，不是框在杆尾 ── */
+function drawCueBallRing(c, cb, strong){
+  const t = performance.now();
+  const pulse = strong ? 1 + Math.sin(t*0.006)*0.10 : 1;
+  const R = BALL_R * (strong ? 1.85 : 1.55) * pulse;
+  c.save();
+  // 外圈（发光）
+  c.globalAlpha = strong ? 0.95 : 0.42;
+  c.strokeStyle = strong ? '#ffffff' : 'rgba(255,255,255,.9)';
+  c.lineWidth = strong ? 0.0080 : 0.0048;
+  c.beginPath(); c.arc(cb.x, cb.z, R, 0, Math.PI*2); c.stroke();
+  // 内圈（贴球一圈，明确"框住的是这颗球"）
+  c.globalAlpha = strong ? 0.85 : 0.55;
+  c.lineWidth = 0.0032;
+  c.beginPath(); c.arc(cb.x, cb.z, BALL_R*1.16, 0, Math.PI*2); c.stroke();
+  c.restore();
+}
+
+/* ── 瞄准辅助：幽灵球 + 目标球走向 + 白球分离 ── */
 function drawAim(c){
   const cb = cueBall();
   if(!cb || !cb.alive) return;
 
-  const showAim = (turn === 0 && !shooting && !gameOver && !placing);
+  const idle = (!shooting && !gameOver && !placing && !ballInHand);
 
-  if(ballInHand && turn === 0){
-    // 自由球：高亮白球周围，提示可拖
-    c.save();
-    c.globalAlpha = 0.18 + Math.sin(performance.now()*0.005)*0.07;
-    c.fillStyle = '#8cf0b0';
-    c.beginPath(); c.arc(cb.x, cb.z, BALL_R*4.2, 0, Math.PI*2); c.fill();
-    c.restore();
+  // 白球选中圈：平时淡淡一圈，拖拽摆位时加粗脉冲
+  drawCueBallRing(c, cb, placing || ballInHand);
+
+  // 练习模式：把"下一个该打的球"用柔光框出来
+  if(!gameOver && !placing){
+    const nb = nextTargetBall();
+    if(nb && nb !== cb){
+      c.save();
+      c.globalAlpha = 0.30 + Math.sin(performance.now()*0.004)*0.14;
+      c.strokeStyle = '#ffd76b';
+      c.lineWidth = 0.0042;
+      c.beginPath(); c.arc(nb.x, nb.z, BALL_R*1.75, 0, Math.PI*2); c.stroke();
+      c.restore();
+    }
   }
 
-  if(!showAim) return;   // 只要轮到你打就显示瞄准线，不用先拖（提升可发现性）
+  if(!idle) return;   // 摆白球时不画瞄准线
 
   const p = predictShot();
   if(!p || !p.end) return;
 
-  // 大圆（拖拽指示）
-  c.save();
-  c.strokeStyle = 'rgba(180,255,210,.30)';
-  c.lineWidth = 0.004;
-  c.beginPath(); c.arc(cb.x, cb.z, BALL_R*4.2, 0, Math.PI*2); c.stroke();
-  c.restore();
+  // 拖动范围大圆
+  if(power > 0.02){
+    c.save();
+    c.globalAlpha = 0.35;
+    c.strokeStyle = 'rgba(180,255,210,.55)';
+    c.lineWidth = 0.004;
+    c.beginPath(); c.arc(cb.x, cb.z, BALL_R*4.2, 0, Math.PI*2); c.stroke();
+    c.restore();
+  }
 
   // 主瞄准线
   c.save();
@@ -729,14 +878,12 @@ function drawAim(c){
   }
 }
 
-/* 球杆：木杆 + 银色指示杆带圆环（照参考图） */
+/* 球杆：木杆。白圈已经框住白球了，杆尾不再画圈（之前那个圆圈让人误会） */
 function drawCue(c){
   const cb = cueBall();
   if(!cb || !cb.alive) return;
-  const show = (turn === 0 && !shooting && !gameOver && !placing);
-  if(!show) return;
-
-  const back = 0.055 + power*0.30;          // 拉杆距离
+  if(shooting || gameOver || placing) return;   // 摆白球时不该看到杆
+  const back = BALL_R + 0.006 + power*0.30;   // 皮头贴住白球，拉杆距离随力度增加
   const LEN = 0.86;
 
   const ax = -aimDir.x, az = -aimDir.z;      // 杆在球后方
@@ -763,13 +910,6 @@ function drawCue(c){
     c.lineWidth = w;
     c.beginPath(); c.moveTo(x0, z0); c.lineTo(x1, z1); c.stroke();
   }
-
-  // 尾端白圈握把
-  c.strokeStyle = 'rgba(245,245,250,.95)';
-  c.lineWidth = 0.011;
-  c.beginPath();
-  c.arc(buttX - ax*0.03, buttZ - az*0.03, 0.031, 0, Math.PI*2);
-  c.stroke();
   c.restore();
 }
 
@@ -912,7 +1052,7 @@ function draw(){
 }
 
 /* ══════════════════════════════════════════════════════════
-   规则引擎（中八）
+   练习模式规则：没有对手、不分组、不换边 —— 把 15 颗球全打进去就算完
    ══════════════════════════════════════════════════════════ */
 function remainingOf(g){
   if(!g) return 0;
@@ -922,110 +1062,57 @@ function remainingOf(g){
 function resolveShot(s){
   if(gameOver) return;
 
-  const me = turn, opp = 1 - turn;
-  const myGroup = groups[me];
-  const myLeft  = remainingOf(myGroup);
-
   const potted = s.potted || [];
-  const non8   = potted.filter(n => n !== 0 && n !== 8);
-  const got8   = potted.includes(8);
+  const objPotted = potted.filter(n => n !== 0);
 
-  // 白球复活（具体摆哪交给自由球）
+  /* 白球落袋：不算罚，直接让你重摆 */
   const cb = cueBall();
   if(cb && !cb.alive){
     cb.alive = true;
     cb.x = -HW*0.62; cb.z = 0; cb.vx = 0; cb.vz = 0;
-  }
-
-  let foul = false, foulMsg = '';
-
-  if(s.cuePotted){ foul = true; foulMsg = '白球落袋'; }
-
-  if(!foul){
-    if(s.firstHit === null){
-      foul = true; foulMsg = '空杆，没碰到任何球';
-    } else {
-      const fh = s.firstHit;
-      if(myGroup === null){
-        if(fh === 8){ foul = true; foulMsg = '还没定组不能先碰黑八'; }
-      } else if(myLeft > 0){
-        if(groupOf(fh) !== myGroup){
-          foul = true;
-          foulMsg = `先碰到 ${fh} 号，不是你的${GROUP_CN[myGroup]}`;
-        }
-      } else {
-        if(fh !== 8){ foul = true; foulMsg = '该打黑八了'; }
-      }
-    }
-  }
-
-  if(got8){
-    if(foul)       return endGame(opp, `犯规（${foulMsg}）并且打进黑八`);
-    if(myLeft > 0) return endGame(opp, `自己还剩 ${myLeft} 颗，黑八提前落袋`);
-    // 这句要按赢家视角写，否则输了的人会看到「赢下这一局」
-    return endGame(me, `${NAMES[me]}打进黑八，赢下这一局`);
-  }
-
-  let justAssigned = false;
-  if(myGroup === null && !foul && non8.length){
-    const g = groupOf(non8[0]);
-    groups[me]  = g;
-    groups[opp] = (g === 'solid') ? 'stripe' : 'solid';
-    justAssigned = true;
-  }
-
-  if(foul){
-    turn = opp;
     ballInHand = true;
-    resetClock();
-    updateHUD();
-    toast(`犯规：${foulMsg} → ${NAMES[opp]}自由球`);
-    scheduleAI();
-    return;
+  } else if(s.cuePotted && cb){
+    // 极少数情况下 cuePotted 但 alive 已恢复，兜底
+    ballInHand = true;
   }
 
-  const effGroup  = groups[me];
-  const legalPots = effGroup ? non8.filter(n => groupOf(n) === effGroup) : non8;
+  const left = remainingBalls();
 
-  if(justAssigned){
-    toast(`你打${GROUP_CN[effGroup]}，电脑打${GROUP_CN[groups[opp]]}`);
-  }
-
-  if(!legalPots.length){
-    turn = opp;
-    ballInHand = false;
-    resetClock();
-    updateHUD();
-    if(!justAssigned) toast(`${NAMES[opp]}上场`);
-    scheduleAI();
-    return;
-  }
-
-  ballInHand = false;
-  resetClock();
   updateHUD();
-  if(!justAssigned) toast(`进 ${legalPots.length} 颗，继续`);
-  scheduleAI();
+
+  if(!left.length){ winGame(); return; }
+
+  if(ballInHand){
+    toast('白球落袋 · 拖到想放的位置');
+  } else if(objPotted.length){
+    toast(`进 ${objPotted.length} 颗 · 还剩 ${left.length} 颗`);
+  }
 }
 
-function endGame(winner, reason){
+function winGame(){
   gameOver = true;
   shooting = false;
   ballInHand = false;
-  clearTimeout(aiTimer);
-  const youWin = (winner === 0);
+  const t = fmtTime(elapsed);
   showModal(
-    youWin ? '🏆' : '💀',
-    youWin ? '你 赢 了' : '你 输 了',
-    `${reason}<br><br>整局 <b>${shots}</b> 杆`,
-    youWin ? 'lose2' : 'lose',
+    '🏆',
+    '全 部 打 完',
+    `15 颗球清台完成<br><br>用时 <b>${t}</b> · 共 <b>${shots}</b> 杆` +
+    `<br><span style="color:#7f8ab0">平均 ${(shots/15).toFixed(1)} 杆一颗</span>`,
+    '',
     [{ t:'再来一局', fn: newGame }]
   );
   updateHUD();
 }
 
+function fmtTime(sec){
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  return m + ':' + (s < 10 ? '0' : '') + s;
+}
+
 /* ══════════════════════════════════════════════════════════
-   AI：ghost ball 几何
+   调试用：ghost ball 求解（不参与对局，只给自动测试/以后加 AI 用）
    ══════════════════════════════════════════════════════════ */
 function distPointSeg(px, pz, x1, z1, x2, z2){
   const dx = x2-x1, dz = z2-z1;
@@ -1043,17 +1130,11 @@ function segBlocked(x1, z1, x2, z2, ignore){
   }
   return false;
 }
-function aiTargets(){
-  const g = groups[1];
-  const left = remainingOf(g);
-  if(g === null) return balls.filter(b => b.alive && b.n !== 0 && b.n !== 8);
-  if(left > 0)   return balls.filter(b => b.alive && groupOf(b.n) === g);
-  return balls.filter(b => b.alive && b.n === 8);
-}
+/** 找一个能进的线路（自动测试用；练习模式里没有任何地方自动出杆） */
 function pickShot(){
   const cb = cueBall();
   if(!cb || !cb.alive) return null;
-  const targets = aiTargets();
+  const targets = remainingBalls();
   if(!targets.length) return null;
 
   let best = null;
@@ -1083,68 +1164,6 @@ function pickShot(){
     }
   }
   return best;
-}
-function placeCueForAI(){
-  const cb = cueBall();
-  if(!cb) return;
-  const ox = cb.x, oz = cb.z;
-  let best = null;
-  for(let x = -HW*0.88; x <= HW*0.88; x += 0.12){
-    for(let z = -HH*0.78; z <= HH*0.78; z += 0.12){
-      let ok = true;
-      for(const b of balls){
-        if(b === cb || !b.alive) continue;
-        if(Math.hypot(x-b.x, z-b.z) < BALL_R*2.15){ ok = false; break; }
-      }
-      if(!ok) continue;
-      cb.x = x; cb.z = z;
-      const p = pickShot();
-      if(p && (!best || p.score > best.score)) best = { x, z, score:p.score };
-    }
-  }
-  if(best){ cb.x = best.x; cb.z = best.z; } else { cb.x = ox; cb.z = oz; }
-  cb.vx = 0; cb.vz = 0;
-}
-
-function scheduleAI(){
-  clearTimeout(aiTimer);
-  if(gameOver || turn !== 1) return;
-  aiTimer = setTimeout(aiShot, 850);
-}
-
-function aiShot(){
-  if(gameOver || turn !== 1 || shooting) return;
-  const cb = cueBall();
-  if(!cb || !cb.alive) return;
-
-  if(ballInHand){ placeCueForAI(); ballInHand = false; }
-
-  const plan = pickShot();
-  let ang, v;
-  if(plan){
-    let vv = (plan.dCG + plan.dTP*1.15 + 0.55) * 1.55;
-    vv = Math.min(MAX_SPEED, Math.max(1.7, vv / Math.max(0.32, plan.cosCut)));
-    const noise = (Math.random() - 0.5) * 0.026;   // ±0.75° 给玩家机会
-    ang = Math.atan2(plan.wz, plan.wx) + noise;
-    v = vv;
-  } else {
-    const t = balls.find(b => b.alive && b.n !== 0 && b.n !== 8) ||
-              balls.find(b => b.alive && b.n !== 0);
-    ang = Math.random()*Math.PI*2;
-    if(t) ang = Math.atan2(t.z - cb.z, t.x - cb.x) + (Math.random()-0.5)*0.4;
-    v = 2.8;
-  }
-
-  aimDir = { x: Math.cos(ang), z: Math.sin(ang) };
-  cb.vx = aimDir.x * v;
-  cb.vz = aimDir.z * v;
-
-  shots++;
-  shooting = true;
-  shotLog = { firstHit:null, potted:[], cuePotted:false };
-  shotStartT = performance.now();
-  updateHUD();
-  toast('电脑出杆…');
 }
 
 /* ══════════════════════════════════════════════════════════
@@ -1176,65 +1195,38 @@ function tryPlaceCue(w){
    HUD
    ══════════════════════════════════════════════════════════ */
 function updateHUD(){
-  document.getElementById('pl0').classList.toggle('act', !gameOver && turn === 0);
-  document.getElementById('pl1').classList.toggle('act', !gameOver && turn === 1);
+  const left = remainingBalls();
+  const done = TOTAL_BALLS - left.length;
+  document.getElementById('leftN').textContent = left.length;
+  document.getElementById('shotN').textContent = shots;
+  document.getElementById('progFill').style.width = (done / TOTAL_BALLS * 100) + '%';
+  document.getElementById('timer').textContent = fmtTime(elapsed);
 
   const tag = document.getElementById('turnTag');
-  if(gameOver){ tag.textContent = '对局结束'; tag.className = ''; }
-  else if(turn === 0){
-    tag.textContent = ballInHand ? '自由球 · 拖动白球' : '你的回合';
+  if(gameOver){
+    tag.textContent = '全部打完 🏆';
+    tag.className = '';
+  } else if(ballInHand){
+    tag.textContent = '自由球 · 拖白球';
     tag.className = '';
   } else {
-    tag.textContent = '电脑回合';
-    tag.className = 'ai';
+    const nb = nextTargetBall();
+    tag.textContent = nb ? `下一个 ${nb.n} 号` : '练习模式';
+    tag.className = '';
   }
-
-  for(let i = 0; i < 2; i++){
-    const g = groups[i];
-    const dots = document.getElementById('dots' + i);
-    const want = g === 'solid'  ? [1,2,3,4,5,6,7]
-               : g === 'stripe' ? [9,10,11,12,13,14,15]
-               : [0,0,0,0,0,0,0];   // 定组前先占 7 个空位，跟参考图一样
-    const sig = want.join(',') + '|' + g;
-    if(dots._sig !== sig){
-      dots.innerHTML = '';
-      for(const n of want){
-        const el = document.createElement('i');
-        el.dataset.n = n;
-        dots.appendChild(el);
-      }
-      dots._sig = sig;
-    }
-    for(const el of dots.children){
-      const n = +el.dataset.n;
-      if(!n){ el.classList.remove('on'); el.style.background = ''; continue; }
-      const alive = balls.some(b => b.alive && b.n === n);
-      el.classList.toggle('on', !alive);
-      el.style.background = alive ? '' : COLORS[n];
-    }
-  }
-  document.getElementById('who0').textContent = groups[0] ? `你 · ${GROUP_CN[groups[0]]}` : '你';
-  document.getElementById('who1').textContent = groups[1] ? `电脑 · ${GROUP_CN[groups[1]]}` : '电脑';
 }
 
-function resetClock(){ timeLeft = MOVES_TIME; tickClock(); }
+let lastShownSec = -1;
 function tickClock(){
-  const el = document.getElementById('timer');
-  el.textContent = Math.max(0, Math.ceil(timeLeft));
-  el.classList.toggle('low', timeLeft <= 6);
+  const sec = Math.floor(elapsed);
+  if(sec === lastShownSec) return;      // 只在秒数变化时才碰 DOM
+  lastShownSec = sec;
+  document.getElementById('timer').textContent = fmtTime(elapsed);
 }
 
-let timeAcc = 0;
 function clockStep(dt){
-  if(gameOver || shooting) return;
-  if(turn !== 0) return;                 // 时钟只卡玩家，电脑回合不计时
-  timeLeft -= dt;
-  if(timeLeft <= 0){
-    timeLeft = MOVES_TIME;
-    turn = 1; ballInHand = true;         // 超时 = 犯规，换人 + 自由球
-    toast('超时了，换电脑');
-    updateHUD(); scheduleAI();
-  }
+  if(gameOver) return;
+  elapsed += dt;                        // 球在动的时候也要走表
   tickClock();
 }
 
@@ -1265,21 +1257,17 @@ function showModal(ic, title, html, cls, buttons){
 }
 
 function showRules(){
-  showModal('📖', '中 八 规 则', `
-<b>球</b><br>16 颗：白球 + 1~7 全色 + 8 号黑球 + 9~15 花色。<br><br>
-<b>定组</b><br>第一杆合法落袋的球决定你的组，对手自动拿另一组。<br><br>
-<b>续杆</b><br>打进自己的球就继续打；没进换人。<br><br>
-<b>怎么赢</b><br>清完本组 7 颗，最后打进黑八。黑八提前落袋直接输。<br><br>
-<b>犯规（对手拿自由球）</b><br>
-· 白球落袋<br>
-· 空杆，白球没碰到任何球<br>
-· 第一颗碰到的不是自己组的球<br>
-· 该打黑八却先碰别的球<br>
-· 每杆 24 秒内没出杆<br><br>
+  showModal('📖', '练 习 模 式', `
+<b>玩法</b><br>没有对手，一个人把台面 15 颗球（1~15 号）全部打进就通关。<br><br>
+<b>白球落袋</b><br>不罚，白球会自动回到台面，你可以直接拖到想放的位置继续打。<br><br>
+<b>建议顺序</b><br>顶部会提示「下一个 N 号」，按号码从小到大打，练走位最有效。<br><br>
 <b>操作</b><br>
-按住台面往你想打的方向拖，拖得越远力越大，松手击球。<br>
-黄线 = 目标球走向；蓝虚线 = 白球分离方向；白圈 = 幽灵球。<br>
-拿到自由球时，直接拖桌面任意位置就能挪白球。
+按住台面往你想打的方向拖，拖得越远力越大，松手击球。<br><br>
+<b>瞄准辅助</b><br>
+· 白虚线 = 白球飞行路线<br>
+· 白色空圈 = 幽灵球（白球撞上去那一刻的位置）<br>
+· 黄箭头 = 目标球被撞后会往哪走<br>
+· 蓝虚线 = 白球撞完自己往哪跑
 `, '', [{ t:'知道了', fn: () => {} }]);
 }
 
@@ -1295,7 +1283,7 @@ function evPos(e){
 }
 
 function onDown(e){
-  if(shooting || gameOver || turn !== 0 || document.getElementById('modal').classList.contains('show')) return;
+  if(shooting || gameOver || document.getElementById('modal').classList.contains('show')) return;
   if(e.cancelable) e.preventDefault();
   const p = evPos(e);
   const w = screenToWorld(p.x, p.y);
@@ -1351,7 +1339,7 @@ function onUp(e){
   if(!aiming) return;
   aiming = false;
 
-  if(power > 0.06 && turn === 0 && !gameOver){
+  if(power > 0.06 && !gameOver){
     doShoot();
   } else {
     power = 0;
@@ -1388,6 +1376,8 @@ function loop(t){
   if(!isFinite(dt) || dt <= 0) dt = 1/60;
   dt = Math.min(dt, 1/30);
 
+  clockStep(dt);       // 计时和击球状态无关，一直走
+
   if(shooting){
     if(now - shotStartT > SHOT_TIMEOUT){
       for(const b of balls){ b.vx = 0; b.vz = 0; }
@@ -1401,8 +1391,6 @@ function loop(t){
       if(s) resolveShot(s);
       updateHUD();
     }
-  } else {
-    clockStep(dt);
   }
 
   draw();
@@ -1412,10 +1400,7 @@ function loop(t){
    开局
    ══════════════════════════════════════════════════════════ */
 function newGame(){
-  clearTimeout(aiTimer);
   shots = 0;
-  turn = 0;
-  groups = [null, null];
   ballInHand = false;
   gameOver = false;
   shooting = false;
@@ -1425,9 +1410,9 @@ function newGame(){
   power = 0;
   aimDir = { x: 1, z: 0 };
   document.getElementById('modal').classList.remove('show');
-  document.querySelectorAll('.dots').forEach(d => { d._sig = null; d.innerHTML = ''; });
   newRack();
-  resetClock();
+  elapsed = 0;
+  lastShownSec = -1;
   updateHUD();
   drawPowerBar();
   toast('开球 · 按住台面往球堆方向拖，松手击球');
@@ -1455,8 +1440,6 @@ window.addEventListener('orientationchange', () => setTimeout(layout, 220));
 /* 调试出口 —— 测试脚本要能读内部状态 */
 window.__G = {
   get balls(){ return balls; },
-  get turn(){ return turn; },
-  get groups(){ return groups; },
   get shooting(){ return shooting; },
   get shots(){ return shots; },
   get gameOver(){ return gameOver; },
@@ -1466,11 +1449,11 @@ window.__G = {
   get placing(){ return placing; },
   get portait(){ return PORTRAIT; },
   get scale(){ return SCALE; },
+  get elapsed(){ return elapsed; },
   get cueBall(){ return cueBall(); },
+  get left(){ return remainingBalls().length; },
   remainingOf, groupOf, pickShot, predictShot, screenToWorld, worldToScreen,
-  newGame,
-  _setTurn(v){ turn = v; updateHUD(); },
-  _setGroups(a, b){ groups = [a, b]; updateHUD(); },
+  nextTargetBall, newGame,
   _kill(n){ const b = ballByN(n); if(b) b.alive = false; updateHUD(); },
   _place(n, x, z){ const b = ballByN(n); if(b){ b.alive = true; b.x = x; b.z = z; b.vx = 0; b.vz = 0; } },
   _resolve(log){ resolveShot(log); },
