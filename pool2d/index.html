@@ -11,11 +11,12 @@
   html,body{width:100%;height:100%;overflow:hidden;overscroll-behavior:none;
     background:#140f26;color:#e8eaf0;
     font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Noto Sans CJK SC",system-ui,sans-serif}
-  #stage{position:fixed;inset:0}
+  #stage{position:absolute;left:0;top:0;transform-origin:0 0;overflow:hidden;
+         background:#140f26}
   canvas{display:block;touch-action:none}
 
   /* ── 顶部 HUD ── */
-  #hud{position:fixed;top:0;left:0;right:0;z-index:10;pointer-events:none;
+  #hud{position:absolute;top:0;left:0;right:0;z-index:10;pointer-events:none;
        display:flex;align-items:flex-start;gap:8px;padding:8px 10px}
   .pnl{flex:1;min-width:0;display:flex;align-items:baseline;gap:6px;
        background:linear-gradient(180deg,rgba(46,56,120,.92),rgba(30,36,84,.92));
@@ -28,7 +29,7 @@
   #shotN{color:#ffcc4d}
 
   /* 进球进度条 */
-  #progWrap{position:fixed;top:56px;left:12px;right:12px;height:4px;z-index:10;
+  #progWrap{position:absolute;top:56px;left:12px;right:12px;height:4px;z-index:10;
     background:rgba(255,255,255,.09);border-radius:2px;overflow:hidden;pointer-events:none}
   #progFill{display:block;height:100%;width:0%;border-radius:2px;
     background:linear-gradient(90deg,#7ee8a2,#ffcc4d);
@@ -44,7 +45,7 @@
   #turnTag.ai{color:#ffcc4d;border-color:rgba(255,204,77,.45);background:rgba(28,20,6,.75)}
 
   /* ── 左侧：力度（球杆在杆架里上下滑） ── */
-  #powerWrap{position:fixed;left:6px;top:50%;transform:translateY(-50%);
+  #powerWrap{position:absolute;left:6px;top:0;
              z-index:10;pointer-events:auto;touch-action:none;cursor:pointer;
              padding:5px 6px;border-radius:16px;
              background:rgba(18,14,38,.45);
@@ -53,7 +54,7 @@
   #powerBar{width:30px;display:block;pointer-events:none}
 
   /* ── 右侧一列：加塞球 + 角度微调刻度 ── */
-  #rightCol{position:fixed;right:6px;top:50%;transform:translateY(-50%);
+  #rightCol{position:absolute;right:6px;top:0;
             z-index:10;display:flex;flex-direction:column;align-items:center;
             gap:2px;touch-action:none}
   .rclbl{font-size:9px;color:#8e9ac0;letter-spacing:.5px;line-height:1.2}
@@ -75,7 +76,7 @@
                    box-shadow:0 0 18px rgba(255,204,77,.45)}
 
   /* ── 底部按钮 ── */
-  #bar{position:fixed;left:50%;transform:translateX(-50%);bottom:5px;
+  #bar{position:absolute;left:50%;transform:translateX(-50%);bottom:5px;
        display:flex;gap:7px;z-index:10}
   #bar button{border:1px solid rgba(255,255,255,.16);border-radius:13px;
     padding:5px 13px;font-size:11px;font-weight:800;font-family:inherit;
@@ -85,7 +86,7 @@
   #bar button:focus-visible{outline:2px solid #7ee8a2;outline-offset:3px}
 
   /* ── 提示 ── */
-  #msg{position:fixed;left:50%;transform:translateX(-50%);bottom:52px;
+  #msg{position:absolute;left:50%;transform:translateX(-50%);bottom:52px;
     padding:7px 16px;border-radius:16px;font-size:12px;white-space:nowrap;z-index:10;
     background:rgba(8,12,24,.9);border:1px solid rgba(126,232,162,.3);color:#9fb0c8;
     backdrop-filter:blur(8px);pointer-events:none;opacity:0;transition:opacity .25s;
@@ -93,7 +94,7 @@
   #msg.show{opacity:1}
 
   /* ── 弹层 ── */
-  #modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;
+  #modal{position:absolute;inset:0;display:none;align-items:center;justify-content:center;
     background:rgba(6,4,18,.86);backdrop-filter:blur(6px);z-index:100;padding:16px}
   #modal.show{display:flex}
   #card{width:100%;max-width:340px;background:linear-gradient(180deg,#2a2358,#1a1638);
@@ -112,7 +113,7 @@
     color:#8a94b8;font-size:12.5px;padding:9px;margin-top:8px}
   #card button:active{transform:scale(.97)}
 
-  #boot{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+  #boot{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
     flex-direction:column;gap:12px;background:#140f26;z-index:200;transition:opacity .35s}
   #boot.gone{opacity:0;pointer-events:none}
   #boot .sp{width:30px;height:30px;border:3px solid rgba(126,232,162,.2);
@@ -122,7 +123,7 @@
 </style>
 </head>
 <body>
-<div id="stage"><canvas id="cv"></canvas></div>
+<div id="stage"><canvas id="cv"></canvas>
 
 <div id="hud">
   <div class="pnl">
@@ -158,13 +159,14 @@
 
 <div id="modal"><div id="card"></div></div>
 <div id="boot"><div class="sp"></div><div class="tx">摆球中…</div></div>
+</div><!-- /stage -->
 
 <script>
 /* 错误上报：脚本里任何运行时错误都会让 rAF 循环静默死掉，画面全黑 */
 window.addEventListener('error', function(e){
   window.__FATAL = e.message + ' @' + e.lineno + ':' + e.colno;
   var d = document.createElement('div');
-  d.style.cssText = 'position:fixed;left:8px;top:70px;right:8px;z-index:9999;background:#2a0000;color:#ff8a8a;font:12px monospace;padding:10px;border-radius:8px;white-space:pre-wrap';
+  d.style.cssText = 'position:absolute;left:8px;top:70px;right:8px;z-index:9999;background:#2a0000;color:#ff8a8a;font:12px monospace;padding:10px;border-radius:8px;white-space:pre-wrap';
   d.textContent = '❌ ' + e.message + '\n@' + e.lineno + ':' + e.colno + '\n' + ((e.error && e.error.stack) || '');
   document.body.appendChild(d);
 }, true);
@@ -220,6 +222,7 @@ const fb  = document.getElementById('fineBar');
 const fbx = fb.getContext('2d');
 
 let DPR = 1, VW = 0, VH = 0;
+let LW = 0, LH = 0;     // stage 逻辑视口（永远宽>高）
 let SCALE = 1;          // 米 → CSS 像素
 let CX = 0, CY = 0;     // 台面中心在屏幕上的位置
 let PORTRAIT = false;   // 竖屏时把台子转 90°，长边竖着放
@@ -285,20 +288,31 @@ function layout(){
   DPR = Math.min(window.devicePixelRatio || 1, 2.5);
   VW = window.innerWidth;
   VH = window.innerHeight;
-  cv.width  = Math.round(VW * DPR);
-  cv.height = Math.round(VH * DPR);
-  cv.style.width  = VW + 'px';
-  cv.style.height = VH + 'px';
 
-  PORTRAIT = false;                 // 始终横版台面，进去就是横的，不弹任何提示
+  /* ── 强制横屏：竖屏视口把整个 stage 转 90° 铺满，进去就是满屏横版台球桌 ──
+     逻辑视口 LW×LH 永远是「宽>高」的那个方向 */
+  PORTRAIT = VH > VW;
+  LW = PORTRAIT ? VH : VW;
+  LH = PORTRAIT ? VW : VH;
+
+  stageEl.style.width  = LW + 'px';
+  stageEl.style.height = LH + 'px';
+  stageEl.style.transform = PORTRAIT
+    ? `translateX(${VW}px) rotate(90deg)`
+    : 'none';
+
+  cv.width  = Math.round(LW * DPR);
+  cv.height = Math.round(LH * DPR);
+  cv.style.width  = LW + 'px';
+  cv.style.height = LH + 'px';
 
   const PAD_L = 50;    // 左侧力度杆
-  const PAD_R = 74;    // 右侧加塞球
+  const PAD_R = 74;    // 右侧加塞球 + 微调
   const PAD_T = 54;    // HUD
   const PAD_B = 42;    // 底部按钮
 
-  const availW = Math.max(120, VW - PAD_L - PAD_R);
-  const availH = Math.max(100, VH - PAD_T - PAD_B);
+  const availW = Math.max(120, LW - PAD_L - PAD_R);
+  const availH = Math.max(100, LH - PAD_T - PAD_B);
 
   const outerW = TABLE_W + RAIL_W*2;
   const outerH = TABLE_H + RAIL_W*2;
@@ -309,12 +323,14 @@ function layout(){
   CX = PAD_L + availW/2;
   CY = PAD_T + availH/2;
 
-  // 左侧力度杆
+  // 左侧力度杆（用 JS 定 top，避免 transform 让命中测试变麻烦）
   const pbH = Math.min(230, Math.max(110, availH - 10));
   pw.style.width  = '30px';
   pw.style.height = pbH + 'px';
   pw.width  = Math.round(30 * DPR);
   pw.height = Math.round(pbH * DPR);
+  document.getElementById('powerWrap').style.top =
+    Math.round(PAD_T + (availH - (pbH + 12))/2) + 'px';
 
   // 右侧加塞球
   const sbSize = Math.min(54, Math.max(34, availH * 0.15));
@@ -329,10 +345,31 @@ function layout(){
   fb.width  = Math.round(26 * DPR);
   fb.height = Math.round(fbH * DPR);
 
+  // 右列整体垂直居中（高度 = 两个 label + 球 + 刻度 + 间距）
+  const colH = sbSize + 8 + fbH + 10 + 12 + 4 + 12;
+  document.getElementById('rightCol').style.top =
+    Math.round(PAD_T + (availH - colH)/2) + 'px';
+
   draw();
   drawPowerBar();
   drawSpinBall();
   drawFineBar();
+}
+
+/* 屏幕坐标 → stage 逻辑坐标（竖屏时 stage 转了 90°） */
+function toStage(clientX, clientY){
+  if(!PORTRAIT) return { x: clientX, y: clientY };
+  return { x: clientY, y: VW - clientX };
+}
+
+/* 元素在 stage 坐标系里的盒子（不含任何 transform，offset 链累加） */
+function rectInStage(el){
+  let x = 0, y = 0, n = el;
+  while(n && n !== stageEl){
+    x += n.offsetLeft; y += n.offsetTop;
+    n = n.offsetParent;
+  }
+  return { left:x, top:y, width: el.offsetWidth, height: el.offsetHeight };
 }
 
 /* ══════════════════════════════════════════════════════════
@@ -1267,15 +1304,15 @@ function drawWatermark(c){
 
 function draw(){
   setScreenTransform();
-  ctx.clearRect(0, 0, VW, VH);
+  ctx.clearRect(0, 0, LW, LH);
 
   // 背景（深紫，参考图那种）
-  const bg = ctx.createRadialGradient(VW*0.5, VH*0.35, 20, VW*0.5, VH*0.5, Math.max(VW,VH)*0.85);
+  const bg = ctx.createRadialGradient(LW*0.5, LH*0.35, 20, LW*0.5, LH*0.5, Math.max(LW,LH)*0.85);
   bg.addColorStop(0, '#2a2050');
   bg.addColorStop(0.55, '#1c1638');
   bg.addColorStop(1, '#100c22');
   ctx.fillStyle = bg;
-  ctx.fillRect(0, 0, VW, VH);
+  ctx.fillRect(0, 0, LW, LH);
 
   setWorldTransform();
   drawTable(ctx);
@@ -1524,9 +1561,9 @@ function showRules(){
 let dragStart = null;
 
 function evPos(e){
-  const r = cv.getBoundingClientRect();
   const t = e.touches ? e.touches[0] : e;
-  return { x: t.clientX - r.left, y: t.clientY - r.top };
+  // 竖屏时 stage 被转了 90°，getBoundingClientRect 给的是旋转后的包围盒，不能用
+  return toStage(t.clientX, t.clientY);
 }
 
 function onDown(e){
@@ -1684,10 +1721,11 @@ cv.addEventListener('contextmenu', e => e.preventDefault());
 /* ── 力度尺交互：上下拖动调力度，松手击球 ── */
 let powerDragging = false;
 
-function powerFromY(clientY){
-  const r = pw.getBoundingClientRect();
+function powerFromY(clientX, clientY){
+  const t0 = toStage(clientX, clientY);
+  const r  = rectInStage(pw);
   const padTop = 10, padBot = 10;
-  const t = (clientY - r.top - padTop) / Math.max(1, r.height - padTop - padBot);
+  const t = (t0.y - r.top - padTop) / Math.max(1, r.height - padTop - padBot);
   return Math.max(0, Math.min(1, t));    // 往下拉杆 → 力越大
 }
 
@@ -1696,7 +1734,7 @@ function onPowerDown(e){
   if(e.cancelable) e.preventDefault();
   powerDragging = true;
   const t = e.touches ? e.touches[0] : e;
-  power = powerFromY(t.clientY);
+  power = powerFromY(t.clientX, t.clientY);
   drawPowerBar();
 }
 
@@ -1704,7 +1742,7 @@ function onPowerMove(e){
   if(!powerDragging) return;
   if(e.cancelable) e.preventDefault();
   const t = e.touches ? e.touches[0] : e;
-  power = powerFromY(t.clientY);
+  power = powerFromY(t.clientX, t.clientY);
   drawPowerBar();
 }
 
@@ -1736,11 +1774,12 @@ const spinWrapEl = document.getElementById('spinWrap');
 
 function spinFromEvent(e){
   const t = e.touches ? e.touches[0] : e;
-  const r = sb.getBoundingClientRect();
+  const p = toStage(t.clientX, t.clientY);
+  const r = rectInStage(sb);
   const cx = r.left + r.width/2, cy = r.top + r.height/2;
   const R = Math.min(r.width, r.height)/2 - 1;
-  let ux =  (t.clientX - cx) / (R * 0.72);
-  let uy = -(t.clientY - cy) / (R * 0.72);
+  let ux =  (p.x - cx) / (R * 0.72);
+  let uy = -(p.y - cy) / (R * 0.72);
   const m = Math.hypot(ux, uy);
   if(m > 1){ ux /= m; uy /= m; }
   // 拖回中心附近 = 无塞
@@ -1783,10 +1822,11 @@ const fineWrapEl = document.getElementById('fineWrap');
 
 function fineFromEvent(e){
   const t0 = e.touches ? e.touches[0] : e;
-  const r  = fb.getBoundingClientRect();
+  const p  = toStage(t0.clientX, t0.clientY);
+  const r  = rectInStage(fb);
   const cy = r.top + r.height/2;
   const half = Math.max(1, r.height/2 - 10);
-  const v = Math.max(-1, Math.min(1, (t0.clientY - cy) / half));
+  const v = Math.max(-1, Math.min(1, (p.y - cy) / half));
   aimOffset = v * FINE_MAX;
   applyAim();
   drawFineBar();
