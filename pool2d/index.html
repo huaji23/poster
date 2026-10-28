@@ -750,6 +750,17 @@ function drawBallNumbers(c){
   }
 }
 
+/* 把预测线裁剪在台面内，别画到库边外面去 */
+function clampToTable(x, z, dx, dz, maxLen){
+  let t = maxLen;
+  const lx = HW - BALL_R, lz = HH - BALL_R;
+  if(dx >  1e-6) t = Math.min(t, ( lx - x)/dx);
+  if(dx < -1e-6) t = Math.min(t, (-lx - x)/dx);
+  if(dz >  1e-6) t = Math.min(t, ( lz - z)/dz);
+  if(dz < -1e-6) t = Math.min(t, (-lz - z)/dz);
+  return Math.max(0, t);
+}
+
 /* ── 白球选中圈：框住球本身，不是框在杆尾 ── */
 function drawCueBallRing(c, cb, strong){
   const t = performance.now();
@@ -832,7 +843,8 @@ function drawAim(c){
 
     // 目标球走线
     if(p.target){
-      const L = 0.55;
+      const L = Math.min(0.55, clampToTable(p.target.from.x, p.target.from.z,
+                                            p.target.dir.x, p.target.dir.z, 0.55));
       c.save();
       c.strokeStyle = 'rgba(255,214,107,.95)';
       c.lineWidth = 0.0055;
@@ -856,9 +868,27 @@ function drawAim(c){
 
     // 白球分离方向
     if(p.reflect){
-      const L = 0.30;
+      const L = Math.min(0.30, clampToTable(p.reflect.from.x, p.reflect.from.z,
+                                            p.reflect.dir.x, p.reflect.dir.z, 0.30));
+      if(L > 0.012){
+        c.save();
+        c.strokeStyle = 'rgba(150,220,255,.75)';
+        c.lineWidth = 0.0042;
+        c.setLineDash([0.022, 0.020]);
+        c.beginPath();
+        c.moveTo(p.reflect.from.x, p.reflect.from.z);
+        c.lineTo(p.reflect.from.x + p.reflect.dir.x*L, p.reflect.from.z + p.reflect.dir.z*L);
+        c.stroke();
+        c.restore();
+      }
+    }
+  } else if(p.reflect){
+    // 撞库反弹
+    const L = Math.min(0.42, clampToTable(p.reflect.from.x, p.reflect.from.z,
+                                          p.reflect.dir.x, p.reflect.dir.z, 0.42));
+    if(L > 0.012){
       c.save();
-      c.strokeStyle = 'rgba(150,220,255,.75)';
+      c.strokeStyle = 'rgba(150,220,255,.70)';
       c.lineWidth = 0.0042;
       c.setLineDash([0.022, 0.020]);
       c.beginPath();
@@ -867,18 +897,6 @@ function drawAim(c){
       c.stroke();
       c.restore();
     }
-  } else if(p.reflect){
-    // 撞库反弹
-    const L = 0.42;
-    c.save();
-    c.strokeStyle = 'rgba(150,220,255,.70)';
-    c.lineWidth = 0.0042;
-    c.setLineDash([0.022, 0.020]);
-    c.beginPath();
-    c.moveTo(p.reflect.from.x, p.reflect.from.z);
-    c.lineTo(p.reflect.from.x + p.reflect.dir.x*L, p.reflect.from.z + p.reflect.dir.z*L);
-    c.stroke();
-    c.restore();
   }
 }
 
