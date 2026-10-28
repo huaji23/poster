@@ -1227,18 +1227,13 @@ function tickClock(){
 let timeAcc = 0;
 function clockStep(dt){
   if(gameOver || shooting) return;
+  if(turn !== 0) return;                 // 时钟只卡玩家，电脑回合不计时
   timeLeft -= dt;
   if(timeLeft <= 0){
     timeLeft = MOVES_TIME;
-    // 超时 = 犯规，换人 + 自由球
-    if(turn === 0){
-      turn = 1; ballInHand = true;
-      toast('超时了，换电脑');
-      updateHUD(); scheduleAI();
-    } else {
-      // 电脑不该超时，兜底
-      aiShot();
-    }
+    turn = 1; ballInHand = true;         // 超时 = 犯规，换人 + 自由球
+    toast('超时了，换电脑');
+    updateHUD(); scheduleAI();
   }
   tickClock();
 }
