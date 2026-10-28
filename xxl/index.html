@@ -244,6 +244,17 @@
     white-space:nowrap;
   }
   #tip.show{opacity:1}
+
+  /* ── 无障碍：系统开了「减少动态效果」就关掉所有位移/缩放动画 ── */
+  @media (prefers-reduced-motion: reduce){
+    .tile{transition-duration:.01ms}
+    .tile .face{transition-duration:.01ms}
+    .tile.hint .face{animation:none;box-shadow:0 0 0 3px var(--gold)}
+    #prog{transition-duration:.01ms}
+    #modal.show{animation:none}
+    #card{animation:none}
+    .float{animation:none;opacity:0}
+  }
 </style>
 </head>
 <body>
