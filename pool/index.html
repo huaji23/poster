@@ -1,0 +1,1337 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>3D 台球</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;
+  -webkit-user-select:none;user-select:none}
+html,body{width:100%;height:100%;overflow:hidden;overscroll-behavior:none;background:#0a0c10;
+  font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;color:#e8eaf0}
+#app{position:fixed;inset:0}
+canvas{display:block}
+
+.hd{position:fixed;top:0;left:0;right:0;display:flex;align-items:center;
+    justify-content:space-between;padding:11px 16px;z-index:10;pointer-events:none;
+    background:linear-gradient(180deg,rgba(6,8,12,.85) 0%,rgba(6,8,12,0) 100%)}
+.hd h1{font-size:14px;font-weight:800;letter-spacing:4px;
+  background:linear-gradient(135deg,#7ee8a2,#2fa860);-webkit-background-clip:text;
+  -webkit-text-fill-color:transparent}
+.hd .st{font-size:11.5px;color:#6a7a86;letter-spacing:1px}
+.hd .st b{color:#7ee8a2;font-size:14px}
+
+.hud{position:fixed;left:12px;bottom:96px;display:flex;flex-direction:column;gap:6px;
+  z-index:10;pointer-events:none}
+.chip{background:rgba(255,255,255,.06);border:1px solid rgba(126,232,162,.2);
+  border-radius:8px;padding:5px 11px;backdrop-filter:blur(8px);font-size:11px;color:#8a9aa6}
+.chip b{color:#7ee8a2;font-size:13px}
+
+.powerWrap{position:fixed;right:16px;bottom:96px;width:16px;height:150px;
+  background:rgba(255,255,255,.07);border-radius:8px;overflow:hidden;z-index:10;
+  border:1px solid rgba(255,255,255,.12);pointer-events:none;
+  display:flex;flex-direction:column;justify-content:flex-end}
+.powerWrap i{display:block;width:100%;height:0%;
+  background:linear-gradient(180deg,#ff5a5a,#ffd66b,#7ee8a2);transition:height .06s}
+
+.msg{position:fixed;left:50%;transform:translateX(-50%);bottom:60px;
+  padding:9px 20px;border-radius:20px;font-size:12.5px;white-space:nowrap;z-index:10;
+  background:rgba(8,12,16,.88);border:1px solid rgba(126,232,162,.25);color:#9aa8b4;
+  backdrop-filter:blur(10px);pointer-events:none;transition:all .25s;opacity:0}
+.msg.show{opacity:1}
+
+.bar{position:fixed;left:50%;transform:translateX(-50%);bottom:16px;display:flex;
+  gap:8px;z-index:10}
+.bar button{border:none;border-radius:20px;padding:10px 18px;font-size:12.5px;
+  font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap;
+  background:rgba(255,255,255,.08);color:#b8c4cc;border:1px solid rgba(255,255,255,.13);
+  backdrop-filter:blur(10px);transition:transform .12s}
+.bar button:active{transform:scale(.94)}
+
+/* ── 中八：双方球组面板 ── */
+.players{position:fixed;top:44px;left:10px;right:10px;display:flex;gap:8px;
+  z-index:10;pointer-events:none}
+.pl{flex:1;min-width:0;background:rgba(255,255,255,.05);
+  border:1px solid rgba(255,255,255,.10);border-radius:11px;padding:7px 10px;
+  backdrop-filter:blur(8px);transition:border-color .25s,background-color .25s,box-shadow .25s}
+.pl.act{border-color:rgba(126,232,162,.7);background:rgba(126,232,162,.11);
+  box-shadow:0 0 18px rgba(126,232,162,.20)}
+.pl .row1{display:flex;justify-content:space-between;align-items:baseline;gap:6px}
+.pl .nm{font-size:12px;font-weight:800;color:#c2ced6;white-space:nowrap}
+.pl.act .nm{color:#7ee8a2}
+.pl .grp{font-size:10px;color:#76858f;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pl.act .grp{color:#9fd6b4}
+.pl .dots{display:flex;gap:3px;margin-top:6px;flex-wrap:wrap;min-height:10px}
+.pl .dots i{width:10px;height:10px;border-radius:50%;box-sizing:border-box;
+  border:1px solid rgba(0,0,0,.45);transition:opacity .3s}
+.pl .dots i.gone{opacity:.16}
+.pl .dots i.str{background:linear-gradient(180deg,#fff 0 26%,var(--c) 26% 74%,#fff 74% 100%) !important}
+
+#win{position:fixed;inset:0;background:rgba(4,7,10,.94);display:none;
+  flex-direction:column;align-items:center;justify-content:center;z-index:100}
+#win.show{display:flex}
+#win .ic{font-size:60px;margin-bottom:12px;animation:pop .5s cubic-bezier(.2,1.7,.4,1)}
+@keyframes pop{from{transform:scale(0) rotate(-20deg)}to{transform:scale(1) rotate(0)}}
+#win .t{font-size:22px;font-weight:800;letter-spacing:4px;margin-bottom:8px;
+  background:linear-gradient(135deg,#7ee8a2,#2fa860);-webkit-background-clip:text;
+  -webkit-text-fill-color:transparent}
+#win .s{font-size:13px;color:#7a8a96;margin-bottom:26px;text-align:center;line-height:1.7}
+#win button{border:none;border-radius:22px;padding:13px 32px;font-size:14px;font-weight:700;
+  cursor:pointer;font-family:inherit;background:linear-gradient(135deg,#7ee8a2,#2fa860);
+  color:#04150b}
+
+/* 白球操作提示 */
+#cueHint{position:fixed;left:0;top:0;pointer-events:none;z-index:20;
+  transform:translate(-50%,-50%);display:none}
+#cueHint.show{display:block}
+#cueHint .ring{width:96px;height:96px;border-radius:50%;
+  border:4px solid #7ee8a2;
+  box-shadow:0 0 26px rgba(126,232,162,.95),inset 0 0 18px rgba(126,232,162,.45);
+  animation:pulse 1.1s ease-in-out infinite;margin:0 auto}
+@keyframes pulse{
+  0%,100%{transform:scale(.9);opacity:.7}
+  50%{transform:scale(1.15);opacity:1}
+}
+#cueHint .lbl{margin-top:9px;text-align:center;font-size:13px;font-weight:800;
+  color:#fff;letter-spacing:2px;white-space:nowrap;
+  background:rgba(20,60,36,.92);border:1px solid rgba(126,232,162,.6);
+  border-radius:14px;padding:4px 12px;display:inline-block;
+  text-shadow:0 1px 4px rgba(0,0,0,.9)}
+#cueHint .lbl{transform:translateX(-50%);position:relative;left:50%}
+
+#load{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+  flex-direction:column;gap:14px;background:#080a0e;z-index:200;transition:opacity .4s}
+#load.gone{opacity:0;pointer-events:none}
+#load .sp{width:34px;height:34px;border:3px solid rgba(126,232,162,.2);
+  border-top-color:#7ee8a2;border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+#load .tx{font-size:12px;color:#5a6a76;letter-spacing:2px}
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<div class="hd">
+  <h1>中 八</h1>
+  <div class="st" id="turnTag">你的回合</div>
+</div>
+
+<div class="players">
+  <div class="pl act" id="pl0">
+    <div class="row1"><span class="nm">你</span><span class="grp" id="grp0">未定组</span></div>
+    <div class="dots" id="dots0"></div>
+  </div>
+  <div class="pl" id="pl1">
+    <div class="row1"><span class="nm">电脑</span><span class="grp" id="grp1">未定组</span></div>
+    <div class="dots" id="dots1"></div>
+  </div>
+</div>
+
+<div class="powerWrap"><i id="powerBar"></i></div>
+
+<!-- 白球操作提示层（HTML 覆盖，保证一定看得见） -->
+<div id="cueHint">
+  <div class="ring"></div>
+  <div class="lbl">按住&nbsp;拖</div>
+</div>
+
+<div class="msg show" id="msg">① 按住白球　② 往后拖　③ 松手击球</div>
+
+<div class="bar">
+  <button id="resetBtn">重新摆球</button>
+</div>
+
+<div id="win">
+  <div class="ic" id="winIc">🎱</div>
+  <div class="t" id="winT">结 束</div>
+  <div class="s" id="winSub"></div>
+  <button id="winBtn">再来一局</button>
+</div>
+
+<div id="load"><div class="sp"></div><div class="tx">摆球中…</div></div>
+
+<script src="three.min.js"></script>
+<script>
+/* 错误上报：脚本里任何运行时错误都会让 animate() 静默死掉，页面只剩一片黑 */
+window.addEventListener('error', function(e){
+  window.__FATAL = e.message + ' @' + e.lineno + ':' + e.colno;
+  var d = document.createElement('div');
+  d.style.cssText = 'position:fixed;left:8px;top:8px;right:8px;z-index:9999;background:#2a0000;color:#ff8a8a;font:12px monospace;padding:10px;border-radius:8px;white-space:pre-wrap';
+  d.textContent = '❌ ' + e.message + '\n@' + e.lineno + ':' + e.colno + '\n' + ((e.error && e.error.stack) || '');
+  document.body.appendChild(d);
+}, true);
+window.addEventListener('unhandledrejection', function(e){
+  window.__FATAL = 'unhandled: ' + e.reason;
+}, true);
+/* ══════════════════════════════════════════════
+   3D 台球
+   物理在 XZ 平面做 2D 计算，再用 three.js 渲染成 3D
+   ══════════════════════════════════════════════ */
+
+/* ── 尺寸（单位：米） ── */
+const TABLE_W = 2.24;          // 内沿长
+const TABLE_H = 1.12;          // 内沿宽
+const HW = TABLE_W/2, HH = TABLE_H/2;
+const BALL_R  = 0.0286;        // 球半径（标准 57mm 直径）
+const POCKET_R = 0.062;        // 袋口半径
+const CUSHION = 0.92;          // 库边弹性
+const BALL_DAMP = 0.96;        // 球碰球能量损
+const FRICTION = 1.20;         // 滚动摩擦减速 m/s²（原 0.38 太滑，一杆要滚 17 秒）
+const STOP_EPS = 0.050;        // 速度低于这个就停下
+const SHOT_TIMEOUT_MS = 12000; // 单杆最长时长兜底，防止球在各种擦碰下永远停不下来
+
+const POCKETS = [
+  [-HW, -HH], [0, -HH], [HW, -HH],
+  [-HW,  HH], [0,  HH], [HW,  HH],
+].map(p=>[p[0], p[1]]);        // 六个袋口中心
+
+/* ── 球色：1黄 2蓝 3红 4紫 5橙 6绿 7栗 8黑 9~15 同 1~7 但带条 ── */
+const COLORS = {
+  0:'#f7f5ef', 1:'#f2c527', 2:'#1f5fd0', 3:'#d0342c', 4:'#7b3fa0',
+  5:'#e8712a', 6:'#1e8a4c', 7:'#8a2a24', 8:'#141414',
+  9:'#f2c527',10:'#1f5fd0',11:'#d0342c',12:'#7b3fa0',
+  13:'#e8712a',14:'#1e8a4c',15:'#8a2a24'
+};
+
+/* ══════════ 场景 ══════════ */
+let scene, camera, renderer, raycaster;
+let ballMeshes = [];           // {mesh, data}
+let cueMesh, aimLine, ghostMesh, cueRing;
+let balls = [];                // 物理数据 {x,z,vx,vz,n,alive,color,stripe}
+
+let aiming = false, aimStart = null, aimNow = null;
+let power = 0;
+let shooting = false;          // 球在运动
+let shots = 0, pocketed = 0;
+let S = 1.0;                   // 1 单位 = 1 米（物理与渲染同尺度，避免相机埋进桌面）
+
+/* ══════════ 中八对局状态 ══════════ */
+const NAMES = ['你', '电脑'];
+let turn = 0;                  // 0 = 你, 1 = 电脑
+let groups = [null, null];     // 'solid'(1-7全色) | 'stripe'(9-15花色)
+let ballInHand = false;        // 自由球：可以任意摆放白球
+let gameOver = false;
+let shotLog = null;            // 本杆事件记录 {firstHit, potted[], cuePotted, cushionHits}
+let placing = false;           // 正在拖动摆放白球
+let aiTimer = 0;
+let waitingShot = false;       // 本杆是否刚开始（用来打时间戳）
+let shotStartT = 0;
+
+function groupOf(n){
+  if(n === 8) return 'eight';
+  if(n === 0) return 'cue';
+  return n <= 7 ? 'solid' : 'stripe';
+}
+const GROUP_CN = { solid:'全色 1-7', stripe:'花色 9-15' };
+
+function initScene(){
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x0a0c10);
+  scene.fog = new THREE.Fog(0x0a0c10, 14, 30);
+
+  const app = document.getElementById('app');
+  const W = app.clientWidth, H = app.clientHeight;
+  camera = new THREE.PerspectiveCamera(45, W/H, 0.05, 100);
+
+  renderer = new THREE.WebGLRenderer({antialias:true});
+  renderer.setSize(W,H);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio,2.5));
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  app.appendChild(renderer.domElement);
+  // ⚠️ 手机关键：three.js 动态创建的 canvas 没有 touch-action，
+  //    不设 none 的话手指拖动会被浏览器当成滚动页面，根本瞄不了
+  renderer.domElement.style.touchAction = 'none';
+  renderer.domElement.style.display = 'block';
+  raycaster = new THREE.Raycaster();
+
+  /* 光 */
+  scene.add(new THREE.AmbientLight(0xffffff, 0.62));
+  const key = new THREE.DirectionalLight(0xfff4e0, 1.25);
+  key.position.set(1.2, 3.2, 1.4);
+  key.castShadow = true;
+  key.shadow.mapSize.set(2048,2048);
+  const sc = key.shadow.camera;
+  sc.left=-2.2; sc.right=2.2; sc.top=2.2; sc.bottom=-2.2; sc.near=0.2; sc.far=12;
+  key.shadow.bias = -0.0005;
+  scene.add(key);
+  const fill = new THREE.DirectionalLight(0xa8d0ff, 0.3);
+  fill.position.set(-2, 2, -1.5);
+  scene.add(fill);
+  // 桌面吊灯感
+  const spot = new THREE.PointLight(0xffe0b0, 0.8, 6);
+  spot.position.set(0, 1.9, 0);
+  scene.add(spot);
+
+  buildTable();
+  rackBalls();          // ← 必须先摆球，否则 balls 是空数组
+  buildBalls();
+  buildCueAndAim();
+  setupCamera();
+  showIdleCue();
+  document.getElementById('load').classList.add('gone');
+  animate();
+}
+
+/* ── 球桌 ── */
+function buildTable(){
+  const g = new THREE.Group();
+  scene.add(g);
+
+  // 台呢（绿绒）
+  const feltGeo = new THREE.PlaneGeometry(TABLE_W*S, TABLE_H*S, 1, 1);
+  const feltCv = document.createElement('canvas');
+  feltCv.width = 512; feltCv.height = 256;
+  const fx = feltCv.getContext('2d');
+  fx.fillStyle = '#1b6b42'; fx.fillRect(0,0,512,256);
+  // 绒面噪点
+  for(let i=0;i<26000;i++){
+    const x=Math.random()*512, y=Math.random()*256;
+    fx.fillStyle = Math.random()>.5 ? 'rgba(255,255,255,.035)' : 'rgba(0,0,0,.055)';
+    fx.fillRect(x,y,1,1);
+  }
+  const feltTex = new THREE.CanvasTexture(feltCv);
+  feltTex.anisotropy = 8;
+  const felt = new THREE.Mesh(feltGeo, new THREE.MeshStandardMaterial({
+    map: feltTex, roughness: .96, metalness: 0
+  }));
+  felt.rotation.x = -Math.PI/2;
+  felt.position.y = 0;
+  felt.receiveShadow = true;
+  g.add(felt);
+
+  // 库边（四条）
+  const railMat = new THREE.MeshStandardMaterial({color:0x5a3a20, roughness:.55, metalness:.06});
+  const railH = 0.16*S, railW = 0.16*S;
+  const mkRail = (w,h,d,x,y,z)=>{
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w,h,d), railMat);
+    m.position.set(x,y,z); m.castShadow=true; m.receiveShadow=true; g.add(m); return m;
+  };
+  // 长边
+  mkRail(TABLE_W*S + railW*2, railH, railW, 0, railH/2, -HH*S - railW/2);
+  mkRail(TABLE_W*S + railW*2, railH, railW, 0, railH/2,  HH*S + railW/2);
+  // 短边
+  mkRail(railW, railH, TABLE_H*S, -HW*S - railW/2, railH/2, 0);
+  mkRail(railW, railH, TABLE_H*S,  HW*S + railW/2, railH/2, 0);
+
+  // 库边顶部深色装饰条
+  const trimMat = new THREE.MeshStandardMaterial({color:0x2a1a0e, roughness:.5});
+  const mkTrim = (w,d,x,z)=>{
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w, 0.02*S, d), trimMat);
+    m.position.set(x, railH+0.01*S, z); g.add(m);
+  };
+  mkTrim(TABLE_W*S + railW*2, railW, 0, -HH*S - railW/2);
+  mkTrim(TABLE_W*S + railW*2, railW, 0,  HH*S + railW/2);
+  mkTrim(railW, TABLE_H*S, -HW*S - railW/2, 0);
+  mkTrim(railW, TABLE_H*S,  HW*S + railW/2, 0);
+
+  // 袋口（黑色圆洞）
+  const pktMat = new THREE.MeshStandardMaterial({color:0x05070a, roughness:.9});
+  for(const [px,pz] of POCKETS){
+    const cyl = new THREE.Mesh(
+      new THREE.CylinderGeometry(POCKET_R*S, POCKET_R*S*0.8, 0.06*S, 22),
+      pktMat
+    );
+    cyl.position.set(px*S, -0.028*S, pz*S);
+    g.add(cyl);
+    // 袋口环
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(POCKET_R*S, 0.012*S, 8, 24),
+      new THREE.MeshStandardMaterial({color:0x1a1208, roughness:.7})
+    );
+    ring.rotation.x = -Math.PI/2;
+    ring.position.set(px*S, 0.004*S, pz*S);
+    g.add(ring);
+  }
+
+  // 桌腿（视觉纵深）
+  const legMat = new THREE.MeshStandardMaterial({color:0x3a2414, roughness:.6});
+  for(const [lx,lz] of [[-1,-1],[1,-1],[-1,1],[1,1]]){
+    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.18*S, 0.7*S, 0.18*S), legMat);
+    leg.position.set(lx*(HW*S+0.1*S), -0.42*S, lz*(HH*S+0.02*S));
+    leg.castShadow = true;
+    g.add(leg);
+  }
+
+  // 地面接影
+  const floor = new THREE.Mesh(
+    new THREE.PlaneGeometry(40,40),
+    new THREE.ShadowMaterial({opacity:.42})
+  );
+  floor.rotation.x = -Math.PI/2;
+  floor.position.y = -0.78*S;
+  floor.receiveShadow = true;
+  scene.add(floor);
+}
+
+/* ── 球面纹理 ── */
+function makeBallTexture(n){
+  const S2 = 256;
+  const cv = document.createElement('canvas');
+  cv.width = S2; cv.height = S2;
+  const c = cv.getContext('2d');
+  const base = COLORS[n] || '#ffffff';
+  const stripe = n >= 9;
+  const solidColor = stripe ? (COLORS[n-8] || '#ccc') : base;
+
+  if(n === 0){
+    c.fillStyle = '#f7f5ef'; c.fillRect(0,0,S2,S2);
+  } else if(n === 8){
+    c.fillStyle = '#141414'; c.fillRect(0,0,S2,S2);
+  } else if(stripe){
+    c.fillStyle = '#f7f5ef'; c.fillRect(0,0,S2,S2);
+    c.fillStyle = COLORS[n-8];
+    c.fillRect(0, S2*0.27, S2, S2*0.46);      // 中间色带
+  } else {
+    c.fillStyle = base; c.fillRect(0,0,S2,S2);
+  }
+
+  // 小白点编号（球面赤道附近）
+  if(n > 0){
+    c.save();
+    c.fillStyle = '#faf8f2';
+    c.beginPath(); c.arc(S2*0.5, S2*0.5, S2*0.135, 0, 7); c.fill();
+    c.fillStyle = '#1a1a1a';
+    c.font = `700 ${Math.round(S2*0.16)}px -apple-system,Arial,sans-serif`;
+    c.textAlign='center'; c.textBaseline='middle';
+    c.fillText(String(n), S2*0.5, S2*0.5 + S2*0.008);
+    c.restore();
+  }
+
+  // 高光/轮廓暗角，让球更立体
+  const g = c.createRadialGradient(S2*0.18,S2*0.14,S2*0.02, S2*0.5,S2*0.5,S2*0.78);
+  g.addColorStop(0,'rgba(255,255,255,.28)');
+  g.addColorStop(.45,'rgba(255,255,255,0)');
+  g.addColorStop(1,'rgba(0,0,0,.22)');
+  c.fillStyle = g; c.fillRect(0,0,S2,S2);
+
+  const t = new THREE.CanvasTexture(cv);
+  t.anisotropy = 8;
+  return t;
+}
+
+/* ── 摆球 ── */
+function ballData(x,z,n){
+  return {x, z, vx:0, vz:0, n, alive:true, x0:x, z0:z};
+}
+
+function rackBalls(){
+  balls = [];
+  // 白球
+  balls.push(ballData(-HW*0.62, 0, 0));
+
+  // 三角形摆球，顶点在右侧
+  const apexX = HW*0.6;
+  const gap = BALL_R*2 + 0.0012;
+  const order = [1, 9, 2, 10, 8, 3, 11, 4, 12, 5, 13, 6, 14, 7, 15];
+  let k = 0;
+  for(let row=0; row<5; row++){
+    for(let i=0; i<=row; i++){
+      const x = apexX + row*gap*0.866;
+      const z = (i - row/2) * gap;
+      balls.push(ballData(x, z, order[k++]));
+    }
+  }
+}
+
+function buildBalls(){
+  for(const bm of ballMeshes){ scene.remove(bm.mesh); }
+  ballMeshes = [];
+
+  const geo = new THREE.SphereGeometry(BALL_R*S, 32, 24);
+  for(const b of balls){
+    const mat = new THREE.MeshStandardMaterial({
+      map: makeBallTexture(b.n),
+      roughness: .22, metalness: .06, envMapIntensity: .4
+    });
+    const m = new THREE.Mesh(geo, mat);
+    m.castShadow = true; m.receiveShadow = true;
+    m.position.set(b.x*S, BALL_R*S, b.z*S);
+    scene.add(m);
+    ballMeshes.push({mesh:m, data:b});
+  }
+}
+
+/* ── 球杆 + 瞄准线 ── */
+function buildCueAndAim(){
+  // 瞄准线
+  const lg = new THREE.BufferGeometry();
+  lg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3));
+  aimLine = new THREE.Line(lg, new THREE.LineBasicMaterial({
+    color:0x7ee8a2, transparent:true, opacity:.75
+  }));
+  aimLine.visible = false;
+  scene.add(aimLine);
+
+  // 落点预测球（虚影）
+  ghostMesh = new THREE.Mesh(
+    new THREE.SphereGeometry(BALL_R*S*1.02, 16, 12),
+    new THREE.MeshBasicMaterial({color:0x7ee8a2, transparent:true, opacity:.28,
+      depthWrite:false})
+  );
+  ghostMesh.visible = false;
+  scene.add(ghostMesh);
+
+  // 球杆
+  cueMesh = new THREE.Group();
+  const CUE_LEN = 0.62;
+  const shaft = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.013*S, 0.020*S, CUE_LEN*S, 14),
+    new THREE.MeshStandardMaterial({color:0xe8c890, roughness:.42, metalness:.05})
+  );
+  shaft.rotation.z = Math.PI/2;
+  shaft.position.x = CUE_LEN*0.5*S;
+  shaft.castShadow = true;
+  cueMesh.add(shaft);
+  const tip = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.013*S, 0.013*S, 0.025*S, 14),
+    new THREE.MeshStandardMaterial({color:0x2a6aaa, roughness:.6})
+  );
+  tip.rotation.z = Math.PI/2;
+  tip.position.x = 0.012*S;
+  cueMesh.add(tip);
+  const butt = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.020*S, 0.020*S, 0.10*S, 14),
+    new THREE.MeshStandardMaterial({color:0x1a1a1a, roughness:.55})
+  );
+  butt.rotation.z = Math.PI/2;
+  butt.position.x = (CUE_LEN + 0.04)*S;
+  butt.castShadow = true;
+  cueMesh.add(butt);
+
+  // ⭐ 待机提示圈：环绕白球呼吸的绿环，这是「这里可以操作」的唯一明确暗示
+  cueRing = new THREE.Mesh(
+    new THREE.RingGeometry(BALL_R*S*1.35, BALL_R*S*2.1, 44),
+    new THREE.MeshBasicMaterial({color:0x7ee8a2, side:THREE.DoubleSide,
+      transparent:true, opacity:.9, depthWrite:false, depthTest:false})
+  );
+  cueRing.rotation.x = -Math.PI/2;
+  cueRing.position.y = BALL_R*S*1.2;
+  cueRing.renderOrder = 999;      // 强制画在最上层
+  cueRing.visible = false;
+  scene.add(cueRing);
+  cueMesh.visible = false;
+  scene.add(cueMesh);
+}
+
+/* ── 相机 ── */
+function fitCamera(){
+  const app = document.getElementById('app');
+  const aspect = app.clientWidth / Math.max(1, app.clientHeight);
+  const fovV = 45 * Math.PI/180;
+  const tanH = Math.tan(fovV/2);
+
+  if(aspect < 1){
+    /* ── 竖屏（手机）：从长边端看进去
+       否则 2:1 的长桌横放在窄屏里会缩成一小条 ── */
+    const needW = TABLE_H * 1.75;              // 横向要看到短边
+    const needD = TABLE_W * 1.32;              // 纵深要看到长边
+    const dH = (needW/2) / (tanH * aspect);
+    const dV = (needD/2) / tanH;
+    const d = Math.max(dH, dV);
+    camera.position.set(d*0.90, d*0.66, 0.02);
+    camera.lookAt(0, 0, 0);
+  } else {
+    /* ── 横屏（电脑/平板）：常规俯视 ── */
+    const needX = TABLE_W * 1.28;
+    const needZ = TABLE_H * 1.55;
+    const dV = (needZ/2) / tanH;
+    const dH = (needX/2) / (tanH * Math.max(aspect, 0.2));
+    const d = Math.max(dV, dH);
+    camera.position.set(0, d*0.92, d*0.62);
+    camera.lookAt(0, 0, 0.02);
+  }
+}
+
+function setupCamera(){
+  fitCamera();
+}
+
+/* ══════════ 物理 ══════════ */
+function stepPhysics(dt){
+  let moving = false;
+
+  for(const b of balls){
+    if(!b.alive) continue;
+    const sp = Math.hypot(b.vx, b.vz);
+    if(sp < STOP_EPS){ b.vx=0; b.vz=0; continue; }
+    moving = true;
+
+    // 摩擦减速
+    const ns = Math.max(0, sp - FRICTION*dt);
+    const k = ns/sp;
+    b.vx *= k; b.vz *= k;
+
+    b.x += b.vx*dt;
+    b.z += b.vz*dt;
+
+    // 库边反弹
+    const lx = HW - BALL_R, lz = HH - BALL_R;
+    if(b.x < -lx){ b.x = -lx; b.vx = Math.abs(b.vx)*CUSHION; }
+    if(b.x >  lx){ b.x =  lx; b.vx = -Math.abs(b.vx)*CUSHION; }
+    if(b.z < -lz){ b.z = -lz; b.vz = Math.abs(b.vz)*CUSHION; }
+    if(b.z >  lz){ b.z =  lz; b.vz = -Math.abs(b.vz)*CUSHION; }
+
+    // 袋口
+    for(const [px,pz] of POCKETS){
+      if(Math.hypot(b.x-px, b.z-pz) < POCKET_R*0.92){
+        b.alive = false;
+        b.vx = 0; b.vz = 0;
+        if(b.n !== 0) pocketed++;
+        // 记录本杆落袋 —— 中八判胜负/定组全靠这个
+        if(shotLog){
+          shotLog.potted.push(b.n);
+          if(b.n === 0) shotLog.cuePotted = true;
+        }
+        break;
+      }
+    }
+  }
+
+  // 球球碰撞
+  for(let i=0;i<balls.length;i++){
+    const a = balls[i]; if(!a.alive) continue;
+    for(let j=i+1;j<balls.length;j++){
+      const b = balls[j]; if(!b.alive) continue;
+      let dx = b.x-a.x, dz = b.z-a.z;
+      let d = Math.hypot(dx,dz);
+      const min = BALL_R*2;
+      if(d === 0){ dx = 0.0001; d = 0.0001; }
+      if(d < min){
+        // 分离
+        const nx = dx/d, nz = dz/d;
+        const overlap = min - d;
+        a.x -= nx*overlap*0.5; a.z -= nz*overlap*0.5;
+        b.x += nx*overlap*0.5; b.z += nz*overlap*0.5;
+
+        // 沿法线的相对速度
+        const rvx = b.vx-a.vx, rvz = b.vz-a.vz;
+        const vn = rvx*nx + rvz*nz;
+        if(vn > 0) continue;             // 正在分离，不处理
+
+        // 等质量弹性碰撞
+        const imp = -vn * (1 + BALL_DAMP) / 2;
+        a.vx -= imp*nx; a.vz -= imp*nz;
+        b.vx += imp*nx; b.vz += imp*nz;
+
+        // 记录白球第一次碰到的是哪颗球 —— 判「先碰对方球」犯规用
+        if(shotLog && shotLog.firstHit === null){
+          if(a.n === 0 && b.n !== 0) shotLog.firstHit = b.n;
+          else if(b.n === 0 && a.n !== 0) shotLog.firstHit = a.n;
+        }
+      }
+    }
+  }
+
+  return moving;
+}
+
+/* ══════════ 渲染循环 ══════════ */
+let lastT = 0;
+function animate(t){
+  requestAnimationFrame(animate);
+  const now = t || performance.now();
+  let dt = (now - lastT)/1000;
+  lastT = now;
+  if(!isFinite(dt) || dt <= 0) dt = 1/60;
+  dt = Math.min(dt, 1/30);
+
+  if(shooting){
+    // 单杆超时兜底：擦碰多的局面球可能一直抖，到点强制停
+    if(!waitingShot){ waitingShot = true; shotStartT = now; }
+    if(now - shotStartT > SHOT_TIMEOUT_MS){
+      balls.forEach(b => { b.vx = 0; b.vz = 0; });
+    }
+    // 子步长提高稳定性
+    const sub = 6, h = dt/sub;
+    let anyMoving = false;
+    for(let s=0;s<sub;s++){
+      if(stepPhysics(h)) anyMoving = true;
+    }
+    if(!anyMoving){
+      waitingShot = false;
+      shooting = false;
+      // 球全停下 → 结算本杆（中八规则）
+      const s = shotLog;
+      shotLog = null;
+      if(s) resolveShot(s);
+      else showIdleCue();
+    }
+  }
+
+  // 同步渲染位置
+  for(const bm of ballMeshes){
+    const d = bm.data;
+    if(d.alive){
+      bm.mesh.visible = true;
+      bm.mesh.position.set(d.x*S, BALL_R*S, d.z*S);
+    } else {
+      bm.mesh.visible = false;
+    }
+  }
+
+  syncCueHint();
+  // 静止时让球杆/光圈时刻跟着白球（自由球拖动时白球会移动，必须每帧同步）
+  if(!shooting && !aiming) showIdleCue();
+
+  // 提示圈呼吸动画
+  if(cueRing && cueRing.visible){
+    const cb = balls.find(b=>b.n===0 && b.alive);
+    if(cb){
+      cueRing.position.set(cb.x*S, BALL_R*S*1.2, cb.z*S);
+      const k = 1 + Math.sin(now*0.004)*0.14;
+      cueRing.scale.set(k, k, 1);
+      cueRing.material.opacity = 0.45 + Math.sin(now*0.004)*0.3;
+    }
+  }
+
+  updateHUD();
+
+  renderer.render(scene, camera);
+}
+
+function updateHUD(){
+  const tag = document.getElementById('turnTag');
+  tag.textContent = gameOver ? '对局结束'
+                  : (turn === 0 ? (ballInHand ? '自由球 · 拖动白球' : '你的回合')
+                                : '电脑回合');
+  tag.style.color = gameOver ? '#e0455e' : (turn === 0 ? '#7ee8a2' : '#ffcc4d');
+
+  for(let i = 0; i < 2; i++){
+    const card = document.getElementById('pl' + i);
+    card.classList.toggle('act', !gameOver && turn === i);
+
+    const g = groups[i];
+    const grpEl = document.getElementById('grp' + i);
+    if(g === null){
+      grpEl.textContent = '未定组';
+    } else {
+      const left = balls.filter(b => b.alive && groupOf(b.n) === g).length;
+      grpEl.textContent = left > 0 ? `${GROUP_CN[g]} · 剩${left}` : '清完了 · 打黑八';
+    }
+
+    // 圆点：定组后显示自己那 7 颗，没定组就不显示
+    const dots = document.getElementById('dots' + i);
+    const want = g === 'solid'  ? [1,2,3,4,5,6,7]
+               : g === 'stripe' ? [9,10,11,12,13,14,15]
+               : [];
+    if(dots._sig !== want.join(',') + '|' + g){
+      dots.innerHTML = '';
+      if(want){
+        for(const n of want){
+          const el = document.createElement('i');
+          const c = COLORS[n];
+          el.style.background = c;
+          el.style.setProperty('--c', c);
+          if(n > 8) el.className = 'str';
+          dots.appendChild(el);
+        }
+      }
+      dots._sig = want.join(',') + '|' + g;
+    }
+    // 更新明暗
+    const kids = dots.children;
+    if(want){
+      want.forEach((n, k) => {
+        const alive = balls.some(b => b.alive && b.n === n);
+        if(kids[k]) kids[k].classList.toggle('gone', !alive);
+      });
+    }
+  }
+}
+
+/* ══════════ 瞄准与击球 ══════════ */
+function pointerToTable(ev){
+  const rect = renderer.domElement.getBoundingClientRect();
+  const e = ev.touches ? ev.touches[0] : ev;
+  const ndc = new THREE.Vector2(
+    ((e.clientX-rect.left)/rect.width)*2 - 1,
+    -((e.clientY-rect.top)/rect.height)*2 + 1
+  );
+  raycaster.setFromCamera(ndc, camera);
+  // 与球心高度平面求交
+  const plane = new THREE.Plane(new THREE.Vector3(0,1,0), -BALL_R*S);
+  const hit = new THREE.Vector3();
+  if(!raycaster.ray.intersectPlane(plane, hit)) return null;
+  return {x: hit.x/S, z: hit.z/S};
+}
+
+let cueBall = null;
+let pressPt = null;        // 屏幕坐标按下点
+let lastDragPx = 0;        // 已拖了多少像素
+const AIM_RADIUS_PX = 90;  // 按在白球多少像素内才算瞄准
+const DRAG_FULL_PX  = 190; // 拖多少像素到满力
+const DRAG_MIN_PX   = 22;  // 少于这个距离不击球（防误触）
+
+function cueBallScreenPos(){
+  if(!cueBall) return null;
+  const r = renderer.domElement.getBoundingClientRect();
+  const v = new THREE.Vector3(cueBall.x, BALL_R*S, cueBall.z).project(camera);
+  return { x: r.left + (v.x*0.5+0.5)*r.width,
+           y: r.top  + (-v.y*0.5+0.5)*r.height,
+           rect: r };
+}
+
+function onDown(ev){
+  if(shooting || gameOver || turn !== 0) return;
+  const e = ev.touches ? ev.touches[0] : ev;
+  cueBall = balls.find(b=>b.n===0 && b.alive);
+  if(!cueBall) return;
+
+  // ⭐ 自由球：点/拖桌面任意位置 = 把白球挪过去（这是中八犯规后对手的权利）
+  if(ballInHand){
+    const p0 = pointerToTable(ev);
+    if(p0){
+      placing = true;
+      hideCueRing();
+      tryPlaceCue(p0);
+      return;
+    }
+  }
+
+  const cs = cueBallScreenPos();
+  if(!cs) return;
+  const d = Math.hypot(e.clientX-cs.x, e.clientY-cs.y);
+
+  // ⚠️ 关键：必须按在白球附近才算瞄准。
+  //    否则「随便点一下桌面」会被当成满力击球（之前的致命 bug）
+  if(d > AIM_RADIUS_PX){
+    toast('按住白球，往后拖，松手击球');
+    return;
+  }
+
+  const p = pointerToTable(ev);
+  aiming = true;
+  hideCueRing();
+  pressPt = {x:e.clientX, y:e.clientY};
+  lastDragPx = 0;
+  aimStart = p || {x:cueBall.x, z:cueBall.z};
+  aimNow = p || {x:cueBall.x, z:cueBall.z};
+  updateAim();
+}
+
+function onMove(ev){
+  if(placing){
+    const e2 = ev.touches ? ev.touches[0] : ev;
+    if(ev.cancelable) ev.preventDefault();
+    tryPlaceCue(pointerToTable(ev));
+    return;
+  }
+  if(!aiming) return;
+  const e = ev.touches ? ev.touches[0] : ev;
+  if(ev.cancelable) ev.preventDefault();
+  const p = pointerToTable(ev);
+  if(!p) return;
+  aimNow = p;
+  if(!aimStart) aimStart = {x:cueBall.x, z:cueBall.z};   // 兜底：防止 aimStart 被清空后整杆失灵
+  // 力度按屏幕拖拽像素算（比世界坐标更符合手感）
+  lastDragPx = Math.hypot(e.clientX-pressPt.x, e.clientY-pressPt.y);
+  updateAim();
+}
+
+function onUp(ev){
+  if(placing){
+    placing = false;
+    ballInHand = false;
+    updateHUD();
+    showIdleCue();
+    toast('白球摆好了 · 按住白球往后拖击球');
+    return;
+  }
+  if(!aiming) return;
+  aiming = false;
+  if(lastDragPx >= DRAG_MIN_PX && power > 0.05){
+    shoot();
+  } else {
+    clearAim();
+    toast('拖远一点再松手');
+  }
+  pressPt = null; lastDragPx = 0;
+}
+
+function updateAim(){
+  if(!cueBall || !aimStart || !aimNow) return;
+  // 方向：从拖拽点指向白球（往后拉，球往前推）
+  let dx = cueBall.x - aimNow.x;
+  let dz = cueBall.z - aimNow.z;
+  const len = Math.hypot(dx,dz);
+  // ⚠️ 这里只能 return，不能 clearAim()：
+  //    按下点就在白球上时 len 天然≈0，一旦 clearAim 把 aimStart 清空，
+  //    后面每一次 onMove 都会在 !aimStart 处早退，整杆彻底失灵（原版隐性 bug）
+  if(len < 1e-4) return;
+  dx /= len; dz /= len;
+
+  // 力度：按屏幕拖拽像素算（比世界坐标更贴手感，也不受相机远近影响）
+  power = Math.min(1, lastDragPx / DRAG_FULL_PX);
+
+  document.getElementById('powerBar').style.height = (power*100)+'%';
+
+  // 射出一条线，算第一个碰撞点
+  const rayLen = 2.0;
+  let hitT = rayLen, hitBall = null;
+  for(const b of balls){
+    if(b === cueBall || !b.alive) continue;
+    // 球到射线距离
+    const ox = b.x - cueBall.x, oz = b.z - cueBall.z;
+    const proj = ox*dx + oz*dz;
+    if(proj <= 0) continue;
+    const perp = Math.abs(ox*dz - oz*dx);
+    if(perp < BALL_R*2 && proj < hitT){
+      hitT = proj; hitBall = b;
+    }
+  }
+  // 库边距离
+  const tx = dx > 0 ? (HW-BALL_R-cueBall.x)/dx : (-HW+BALL_R-cueBall.x)/dx;
+  const tz = dz > 0 ? (HH-BALL_R-cueBall.z)/dz : (-HH+BALL_R-cueBall.z)/dz;
+  const tWall = Math.min(dx!==0?tx:1e9, dz!==0?tz:1e9);
+  if(tWall > 0 && tWall < hitT) hitT = tWall;
+
+  const ex = cueBall.x + dx*hitT, ez = cueBall.z + dz*hitT;
+
+  // 画瞄准线
+  const pos = aimLine.geometry.attributes.position;
+  pos.setXYZ(0, cueBall.x*S, BALL_R*S*1.02, cueBall.z*S);
+  pos.setXYZ(1, ex*S, BALL_R*S*1.02, ez*S);
+  pos.needsUpdate = true;
+  aimLine.visible = true;
+
+  // 虚影球
+  ghostMesh.position.set(ex*S, BALL_R*S, ez*S);
+  ghostMesh.visible = true;
+
+  // 球杆位置：在白球后方
+  cueMesh.visible = true;
+  cueMesh.position.set(
+    (cueBall.x - dx*(BALL_R+0.06+power*0.28))*S,
+    BALL_R*S*0.85,
+    (cueBall.z - dz*(BALL_R+0.06+power*0.28))*S
+  );
+  // 杆身朝「击球方向的反方向」伸展，杆头贴着白球
+  cueMesh.rotation.y = Math.atan2(dz, -dx);
+}
+
+function clearAim(){
+  aimLine.visible = false;
+  ghostMesh.visible = false;
+  cueMesh.visible = false;
+  power = 0;
+  document.getElementById('powerBar').style.height = '0%';
+  aimStart = null; aimNow = null;
+  showIdleCue();
+}
+function hideCueRing(){ if(cueRing) cueRing.visible = false; }
+
+/* HTML 提示层：跟着白球走，只在「该你打」的时候显示 */
+function syncCueHint(){
+  const el = document.getElementById('cueHint');
+  if(!el) return;
+  const cb = balls.find(b=>b.n===0 && b.alive);
+  const showIt = cb && !shooting && !aiming && !gameOver && turn === 0
+                 && !document.getElementById('win').classList.contains('show');
+  if(!showIt){ el.classList.remove('show'); return; }
+  el.querySelector('.lbl').innerHTML = ballInHand ? '拖我摆位' : '按住&nbsp;拖';
+  const r = renderer.domElement.getBoundingClientRect();
+  const v = new THREE.Vector3(cb.x, BALL_R*S, cb.z).project(camera);
+  const x = r.left + (v.x*0.5+0.5)*r.width;
+  const y = r.top  + (-v.y*0.5+0.5)*r.height;
+  el.style.left = x + 'px';
+  el.style.top  = y + 'px';
+  el.classList.add('show');
+}
+
+/* 静止时：球杆常显在白球右边，告诉用户「这里可以瞄」 */
+function showIdleCue(){
+  const cb = balls.find(b=>b.n===0 && b.alive);
+  // 电脑回合/自由球/对局结束都不该显示球杆，否则玩家会以为轮到自己
+  if(!cb || shooting || aiming || gameOver || turn !== 0){
+    cueMesh.visible = false;
+    if(cueRing) cueRing.visible = false;
+    return;
+  }
+  cueMesh.visible = true;
+  // 球堆在 +x 方向，所以杆放在白球左侧、杆身往左伸展
+  cueMesh.position.set((cb.x - BALL_R - 0.10)*S, BALL_R*S*0.85, cb.z*S);
+  cueMesh.rotation.y = Math.PI;
+  // 白球周围呼吸光圈 —— 明确的「按住这里」暗示
+  if(cueRing){
+    cueRing.visible = true;
+    cueRing.position.set(cb.x*S, BALL_R*S*1.2, cb.z*S);
+  }
+}
+
+function shoot(){
+  if(!cueBall || !aimNow) { clearAim(); return; }
+  if(gameOver || turn !== 0) { clearAim(); return; }
+  let dx = cueBall.x - aimNow.x;
+  let dz = cueBall.z - aimNow.z;
+  const len = Math.hypot(dx,dz);
+  if(len < 1e-4){ clearAim(); return; }
+  dx /= len; dz /= len;
+
+  const maxSpeed = 6.2;                 // m/s
+  const v = maxSpeed * Math.pow(power, 0.85);
+
+  cueBall.vx = dx*v;
+  cueBall.vz = dz*v;
+
+  shots++;
+  shooting = true;
+  ballInHand = false;
+  shotLog = { firstHit:null, potted:[], cuePotted:false, cushionHits:0 };
+  hideCueRing();
+  clearAim();
+}
+
+/* ══════════ 中八规则引擎 ══════════ */
+
+function remainingOf(g){
+  if(!g) return 0;
+  return balls.filter(b => b.alive && groupOf(b.n) === g).length;
+}
+
+/** 球全部停下后结算本杆 */
+function resolveShot(s){
+  if(gameOver) return;
+  const me = turn, opp = 1 - turn;
+  const myGroup = groups[me];
+  const myLeft  = remainingOf(myGroup);
+
+  const potted = s.potted || [];
+  const non8   = potted.filter(n => n !== 0 && n !== 8);
+  const got8   = potted.includes(8);
+
+  /* 白球落袋：先复活（真正摆哪由「自由球」接管），否则桌上没白球了 */
+  const cb = balls.find(b => b.n === 0);
+  if(cb && !cb.alive){
+    cb.alive = true;
+    cb.x = -HW*0.62; cb.z = 0; cb.vx = 0; cb.vz = 0;
+  }
+
+  let foul = false, foulMsg = '';
+
+  /* ① 白球落袋 */
+  if(s.cuePotted){ foul = true; foulMsg = '白球落袋'; }
+
+  /* ② 首球合法性 */
+  if(!foul){
+    if(s.firstHit === null){
+      foul = true; foulMsg = '空杆，白球没碰到任何球';
+    } else {
+      const fh = s.firstHit;
+      if(myGroup === null){
+        if(fh === 8){ foul = true; foulMsg = '还没定组不能先碰黑八'; }
+      } else if(myLeft > 0){
+        if(groupOf(fh) !== myGroup){
+          foul = true;
+          foulMsg = `先碰到 ${fh} 号，不是你的${myGroup === 'solid' ? '全色' : '花色'}`;
+        }
+      } else {
+        if(fh !== 8){ foul = true; foulMsg = '你的球打完了，该打黑八'; }
+      }
+    }
+  }
+
+  /* ③ 黑八结算（必须在定组之前判：提前进就是输） */
+  if(got8){
+    if(foul)       return endGame(opp, `犯规（${foulMsg}）并且打进黑八`);
+    if(myLeft > 0) return endGame(opp, `自己还剩 ${myLeft} 颗球，黑八提前落袋`);
+    return endGame(me, '打进黑八，赢下这一局');
+  }
+
+  /* ④ 定组：本杆第一颗合法落袋的非 8 球决定球组 */
+  let justAssigned = false;
+  if(myGroup === null && !foul && non8.length){
+    const g = groupOf(non8[0]);
+    groups[me]  = g;
+    groups[opp] = (g === 'solid') ? 'stripe' : 'solid';
+    justAssigned = true;
+  }
+
+  /* ⑤ 犯规 → 对手自由球 */
+  if(foul){
+    turn = opp;
+    ballInHand = true;
+    updateHUD();
+    toast(`犯规：${foulMsg} → ${NAMES[opp]}自由球`);
+    scheduleAI();
+    return;
+  }
+
+  const effGroup  = groups[me];
+  const legalPots = effGroup ? non8.filter(n => groupOf(n) === effGroup) : non8;
+
+  if(justAssigned){
+    toast(`你打${GROUP_CN[effGroup]}，电脑打${GROUP_CN[groups[opp]]}`);
+  }
+
+  if(!legalPots.length){
+    turn = opp;
+    ballInHand = false;
+    updateHUD();
+    if(!justAssigned) toast(`${NAMES[opp]}上场`);
+    scheduleAI();
+    return;
+  }
+
+  ballInHand = false;
+  updateHUD();
+  if(!justAssigned) toast(`进 ${legalPots.length} 颗，继续`);
+  scheduleAI();
+}
+
+function endGame(winner, reason){
+  gameOver = true;
+  shooting = false;
+  ballInHand = false;
+  clearAim();
+  hideCueRing();
+  const youWin = (winner === 0);
+  document.getElementById('winIc').textContent = youWin ? '🏆' : '💀';
+  document.getElementById('winT').textContent  = youWin ? '你 赢 了' : '你 输 了';
+  document.getElementById('winSub').innerHTML  =
+    `${reason}<br><span style="color:#5f6d78">整局 ${shots} 杆</span>`;
+  document.getElementById('win').classList.add('show');
+  updateHUD();
+}
+
+/* ══════════ 自由球：拖动摆放白球 ══════════ */
+function tryPlaceCue(p){
+  if(!p) return;
+  const cb = balls.find(b => b.n === 0);
+  if(!cb || !cb.alive) return;
+  const lx = HW - BALL_R, lz = HH - BALL_R;
+  let x = Math.max(-lx, Math.min(lx, p.x));
+  let z = Math.max(-lz, Math.min(lz, p.z));
+
+  // 不能压在别的球上：沿反方向推到刚好不重叠
+  for(const b of balls){
+    if(b === cb || !b.alive) continue;
+    const d = Math.hypot(x - b.x, z - b.z);
+    if(d < BALL_R * 2.12){
+      const nx = d > 1e-5 ? (x - b.x)/d : 1;
+      const nz = d > 1e-5 ? (z - b.z)/d : 0;
+      x = b.x + nx * BALL_R * 2.12;
+      z = b.z + nz * BALL_R * 2.12;
+    }
+  }
+  x = Math.max(-lx, Math.min(lx, x));
+  z = Math.max(-lz, Math.min(lz, z));
+
+  cb.x = x; cb.z = z; cb.vx = 0; cb.vz = 0;
+}
+
+/* ══════════ AI ─═════════ */
+
+function distPointSeg(px, pz, x1, z1, x2, z2){
+  const dx = x2 - x1, dz = z2 - z1;
+  const L2 = dx*dx + dz*dz;
+  if(L2 < 1e-12) return Math.hypot(px - x1, pz - z1);
+  let t = ((px - x1)*dx + (pz - z1)*dz) / L2;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(px - (x1 + t*dx), pz - (z1 + t*dz));
+}
+
+function segBlocked(x1, z1, x2, z2, ignore){
+  for(const b of balls){
+    if(!b.alive) continue;
+    if(ignore.indexOf(b) >= 0) continue;
+    if(distPointSeg(b.x, b.z, x1, z1, x2, z2) < BALL_R * 2 * 0.94) return true;
+  }
+  return false;
+}
+
+function aiTargets(){
+  const g = groups[1];
+  const left = remainingOf(g);
+  if(g === null) return balls.filter(b => b.alive && b.n !== 0 && b.n !== 8);
+  if(left > 0)   return balls.filter(b => b.alive && groupOf(b.n) === g);
+  return balls.filter(b => b.alive && b.n === 8);
+}
+
+/** 枚举「目标球 × 袋口」，用 ghost ball 几何挑最好的一杆 */
+function pickShot(){
+  const cb = balls.find(b => b.n === 0 && b.alive);
+  if(!cb) return null;
+  const targets = aiTargets();
+  if(!targets.length) return null;
+
+  let best = null;
+  for(const t of targets){
+    for(const [px, pz] of POCKETS){
+      let dx = px - t.x, dz = pz - t.z;
+      const dTP = Math.hypot(dx, dz);
+      if(dTP < 0.02) continue;
+      const ux = dx/dTP, uz = dz/dTP;
+
+      // ghost ball：白球撞到「目标球心往回退 2R」这个点，目标球才会朝袋口走
+      const gx = t.x - ux * BALL_R * 2;
+      const gz = t.z - uz * BALL_R * 2;
+
+      const cx = gx - cb.x, cz = gz - cb.z;
+      const dCG = Math.hypot(cx, cz);
+      if(dCG < 1e-3) continue;
+      const wx = cx/dCG, wz = cz/dCG;
+
+      const cosCut = wx*ux + wz*uz;     // 切角余弦
+      if(cosCut < 0.25) continue;       // 太薄，打不进
+
+      if(segBlocked(cb.x, cb.z, gx, gz, [cb, t])) continue;   // 白球到 ghost 之间被挡
+      if(segBlocked(t.x, t.z, px, pz, [cb, t])) continue;     // 目标球到袋口被挡
+
+      const score = Math.pow(cosCut, 2.4) * 1.9 / (1 + dCG*0.5 + dTP*0.9);
+      if(!best || score > best.score) best = { score, t, dCG, dTP, cosCut, wx, wz };
+    }
+  }
+  return best;
+}
+
+function placeCueForAI(){
+  const cb = balls.find(b => b.n === 0);
+  if(!cb) return;
+  const ox = cb.x, oz = cb.z;
+  let best = null;
+  for(let x = -HW*0.88; x <= HW*0.88; x += 0.11){
+    for(let z = -HH*0.78; z <= HH*0.78; z += 0.11){
+      let ok = true;
+      for(const b of balls){
+        if(b === cb || !b.alive) continue;
+        if(Math.hypot(x - b.x, z - b.z) < BALL_R * 2.15){ ok = false; break; }
+      }
+      if(!ok) continue;
+      cb.x = x; cb.z = z;
+      const p = pickShot();
+      if(p && (!best || p.score > best.score)) best = { x, z, score: p.score };
+    }
+  }
+  if(best){ cb.x = best.x; cb.z = best.z; }
+  else    { cb.x = ox;    cb.z = oz;    }
+  cb.vx = 0; cb.vz = 0;
+}
+
+function scheduleAI(){
+  clearTimeout(aiTimer);
+  if(gameOver || turn !== 1) return;
+  aiTimer = setTimeout(aiShot, 900);
+}
+
+function aiShot(){
+  if(gameOver || turn !== 1 || shooting) return;
+  const cb = balls.find(b => b.n === 0 && b.alive);
+  if(!cb) return;
+
+  if(ballInHand){
+    placeCueForAI();
+    ballInHand = false;
+  }
+
+  const plan = pickShot();
+  if(plan){
+    let v = (plan.dCG + plan.dTP * 1.15 + 0.55) * 1.55;
+    v = Math.min(6.0, Math.max(1.7, v / Math.max(0.32, plan.cosCut)));
+    const noise = (Math.random() - 0.5) * 0.026;    // ≈ ±0.75°，给玩家留机会
+    const ang = Math.atan2(plan.wz, plan.wx) + noise;
+    cb.vx = Math.cos(ang) * v;
+    cb.vz = Math.sin(ang) * v;
+  } else {
+    // 没线路：朝自己一颗球轻推，别乱撞
+    const t = balls.find(b => b.alive && b.n !== 0 && b.n !== 8) ||
+              balls.find(b => b.alive && b.n !== 0);
+    let ang = Math.random() * Math.PI * 2;
+    if(t) ang = Math.atan2(t.z - cb.z, t.x - cb.x) + (Math.random() - 0.5) * 0.4;
+    cb.vx = Math.cos(ang) * 2.8;
+    cb.vz = Math.sin(ang) * 2.8;
+  }
+
+  shots++;
+  shooting = true;
+  shotLog = { firstHit:null, potted:[], cuePotted:false, cushionHits:0 };
+  hideCueRing();
+  toast('电脑出杆…');
+}
+
+function toast(t){
+  const m = document.getElementById('msg');
+  m.textContent = t; m.classList.add('show');
+  clearTimeout(m._t);
+  m._t = setTimeout(()=>m.classList.remove('show'), 1600);
+}
+
+/* ══════════ 事件 ══════════ */
+function bindEvents(){
+  const el = renderer.domElement;
+  el.addEventListener('pointerdown', onDown);
+  el.addEventListener('pointermove', onMove);
+  el.addEventListener('pointerup', onUp);
+  el.addEventListener('pointerleave', onUp);
+  el.addEventListener('touchstart', e=>{ e.preventDefault(); onDown(e); }, {passive:false});
+  el.addEventListener('touchmove',  e=>{ e.preventDefault(); onMove(e); }, {passive:false});
+  el.addEventListener('touchend',   e=>{ e.preventDefault(); onUp(e); }, {passive:false});
+
+  window.addEventListener('resize', ()=>{
+    const app = document.getElementById('app');
+    camera.aspect = app.clientWidth/app.clientHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(app.clientWidth, app.clientHeight);
+    fitCamera();
+  });
+
+  document.getElementById('resetBtn').onclick = ()=> newGame();
+  document.getElementById('winBtn').onclick = ()=> newGame();
+}
+
+function newGame(){
+  clearTimeout(aiTimer);
+  shots = 0; pocketed = 0; shooting = false;
+  gameOver = false; ballInHand = false; placing = false;
+  turn = 0;
+  groups = [null, null];
+  shotLog = null;
+  document.getElementById('win').classList.remove('show');
+  clearAim();
+  document.querySelectorAll('.dots').forEach(d => { d._sig = ''; d.innerHTML = ''; });
+  rackBalls();
+  buildBalls();
+  updateHUD();
+  showIdleCue();
+  toast('开球 · 按住白球往后拖');
+}
+
+/* ══════════ 启动 ══════════ */
+// 调试出口：测试脚本要能读内部状态，不然只能靠截图猜
+window.__G = {
+  get balls(){ return balls; },
+  get turn(){ return turn; },
+  get groups(){ return groups; },
+  get ballInHand(){ return ballInHand; },
+  get gameOver(){ return gameOver; },
+  get shooting(){ return shooting; },
+  get shots(){ return shots; },
+  get cueBall(){ return balls.find(b => b.n === 0); },
+  get aiming(){ return aiming; },
+  get power(){ return power; },
+  get dragPx(){ return lastDragPx; },
+  get placing(){ return placing; },
+  remainingOf, groupOf, pickShot, aiTargets, distPointSeg,
+  newGame, endGame,
+  _setTurn(v){ turn = v; updateHUD(); },
+  _setGroups(a, b){ groups = [a, b]; updateHUD(); },
+  _shoot(vx, vz){
+    const cb = balls.find(b => b.n === 0); if(!cb) return;
+    cb.vx = vx; cb.vz = vz; shooting = true;
+    shotLog = { firstHit:null, potted:[], cuePotted:false, cushionHits:0 };
+  },
+  _place(n, x, z){
+    const b = balls.find(b => b.n === n); if(!b) return;
+    b.alive = true; b.x = x; b.z = z; b.vx = 0; b.vz = 0;
+  },
+  _kill(n){ const b = balls.find(b => b.n === n); if(b) b.alive = false; },
+  _resolve(log){ resolveShot(log); },
+  _stopAll(){ balls.forEach(b => { b.vx = 0; b.vz = 0; }); },
+};
+
+initScene();
+bindEvents();
+console.log('中八已就绪 · three r' + THREE.REVISION);
+</script>
+</body>
+</html>
