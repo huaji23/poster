@@ -703,6 +703,7 @@ async function doSwap(a, b) {
   await resolveCascades();
   await afterMove();
   busy = false;
+  updateHUD();      // busy 变回 false 后必须重刷，否则洗牌按钮一直停在 disabled
   resetIdle();
 }
 
@@ -721,7 +722,7 @@ async function afterMove() {
 //  洗牌
 // ═══════════════════════════════════════════════════════════
 async function shuffleBoard() {
-  busy = true;
+  // busy 由调用方管理，这里不碰，否则洗牌中途按钮会闪一下可用
   clearSel(); clearHint();
 
   let tries = 0;
@@ -741,8 +742,6 @@ async function shuffleBoard() {
   } while (tries < 60 && (findMatches().length > 0 || !hasValidMove()));
 
   await sleep(220);
-  busy = false;
-  resetIdle();
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -891,10 +890,17 @@ $('btnHint').addEventListener('click', () => {
 
 $('btnShuffle').addEventListener('click', async () => {
   if (busy || over || shuffles <= 0) return;
+  busy = true;
   shuffles--;
   updateHUD();
   await shuffleBoard();
   await resolveCascades();
+  if (!over) {
+    if (!hasValidMove()) await shuffleBoard();
+    if (score >= GOAL) win();
+    else if (moves <= 0) lose();
+  }
+  busy = false;
   updateHUD();
   resetIdle();
 });
