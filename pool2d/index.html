@@ -598,6 +598,24 @@ function stepPhysics(dt){
     const uz = b.vz - b.wx*BALL_R;
     const us = Math.hypot(ux, uz);
 
+    /* 落袋先于「是否静止」判断 —— 否则一颗正好停在袋口的球会永远卡住 */
+    let potted = false;
+    for(const [px, pz] of POCKETS){
+      if(Math.hypot(b.x - px, b.z - pz) < POCKET_R * 0.88){
+        b.alive = false; b.vx = 0; b.vz = 0; b.wx = 0; b.wz = 0; b.wy = 0;
+        addSink(b.x, b.z, b.n);
+        addImpact(b.x, b.z, 0.95);
+        if(b.n !== 0) addPraise(b.x, b.z);
+        if(shotLog){
+          shotLog.potted.push(b.n);
+          if(b.n === 0) shotLog.cuePotted = true;
+        }
+        potted = true;
+        break;
+      }
+    }
+    if(potted) continue;
+
     if(sp < STOP_EPS && us < STOP_EPS*2.5){
       b.vx = 0; b.vz = 0; b.wx = 0; b.wz = 0;
       b.wy *= Math.max(0, 1 - 5*dt);
@@ -681,20 +699,6 @@ function stepPhysics(dt){
       addImpact(b.x, b.z, Math.min(0.50, Math.hypot(b.vx, b.vz) / 5.5));
     }
 
-    // 袋
-    for(const [px, pz] of POCKETS){
-      if(Math.hypot(b.x - px, b.z - pz) < POCKET_R * 0.88){
-        b.alive = false; b.vx = 0; b.vz = 0;
-        addSink(b.x, b.z, b.n);
-        addImpact(b.x, b.z, 0.95);
-        if(b.n !== 0) addPraise(b.x, b.z);   // 白球掉袋别夸
-        if(shotLog){
-          shotLog.potted.push(b.n);
-          if(b.n === 0) shotLog.cuePotted = true;
-        }
-        break;
-      }
-    }
   }
 
   // 球球碰撞
