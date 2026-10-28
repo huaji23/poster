@@ -132,6 +132,7 @@
   <div id="spinWrap"><canvas id="spinBall"></canvas></div>
   <span class="rclbl">微调</span>
   <div id="fineWrap"><canvas id="fineBar"></canvas></div>
+  <span class="rclbl" id="fineVal">0°</span>
 </div>
 
 <div id="msg">① 左右滑屏幕瞄准　② 下拉左边力度杆　③ 松手出杆</div>
@@ -169,15 +170,29 @@ window.addEventListener('unhandledrejection', function(e){
 /* ── 台面尺寸 ── */
 const TABLE_W = 2.24, TABLE_H = 1.12;
 const HW = TABLE_W/2, HH = TABLE_H/2;
-const BALL_R = 0.0286;
+const BALL_R = 0.040;            // 按真实比例球太小了，放大 1.4 倍才符合「常理」
 const POCKET_R = 0.072;          // 2D 玩法放宽一点，判定更友好
 const RAIL_W = 0.13;             // 库边宽
-const CUSHION = 0.87;            // 库边弹性（真实台球约 0.75~0.85，留点手感）
-const BALL_DAMP = 0.96;          // 球碰球能量损失
-const FRICTION = 0.95;           // m/s²，滚动摩擦，满力一杆滚 6 秒左右更像真台球
-const STOP_EPS = 0.045;
+const CUSHION = 0.87;            // 旧常量（已被 E_CUSH 取代，保留兼容）
+const BALL_DAMP = 0.96;          // 旧常量（已被 E_BALL 取代）
+const FRICTION = 0.95;           // 旧常量（已被 MU_ROLL 取代）
+const STOP_EPS = 0.09;          // 慢到这个速度就判停，省得滚动阶段拖太久
 const SHOT_TIMEOUT = 11000;
 const MAX_SPEED = 6.2;
+
+/* ══════════════════════════════════════════════════════════
+   真实台球物理常数
+   —— 按 pooltool (Apache-2.0) / Han 2005 / Mathavan 2010 的模型
+   核心是「滑动→滚动」两阶段 + 球间切向摩擦(throw) + 库边切向摩擦
+   ══════════════════════════════════════════════════════════ */
+const G_ACC      = 9.81;
+const MU_SLIDE   = 0.20;    // 球-台呢 滑动摩擦系数（决定击球后那段急减速）
+const MU_ROLL    = 0.09;    // 球-台呢 滚动阻力（真实约 0.01，游戏放大以保证手感）
+const MU_BALL    = 0.06;    // 球-球 接触摩擦 → 产生 throw 偏转，这是「碰撞曲线」的关键
+const E_BALL     = 0.95;    // 球-球 恢复系数
+const MU_CUSH    = 0.20;    // 球-库 切向摩擦
+const E_CUSH     = 0.86;    // 球-库 法向恢复系数
+const SLIDE_EPS  = 0.012;   // 接触点速度低于这个就算纯滚动
 
 /* 六个袋口：四角 + 两个中袋 */
 const POCKETS = [
@@ -213,7 +228,7 @@ let PORTRAIT = false;   // 竖屏时把台子转 90°，长边竖着放
 
 /* ══════════ 状态 ══════════ */
 let balls = [];                       // {x,z,vx,vz,n,alive}
-/* ══════════ 状态（纯练习：一个人把 15 颗球全部打完） ══════════ */
+/* ══════════ 状态（纯练习：一个人把 8 颗球全部打完） ══════════ */
 let ballInHand = false;
 let gameOver = false;
 let shotLog = null;
@@ -228,8 +243,10 @@ let elapsed = 0;                          // 累计用时（秒）
 let spinX = 0, spinY = 0;                 // 加塞：x 左右(-1..1)，y 上下(-1..1，正=高杆)
 let aimBase = { x: 1, z: 0 };             // 滑屏幕给的大方向
 let aimOffset = 0;                        // 右侧微调刻度叠加的角度（弧度）
-const FINE_MAX = 0.052;                   // 微调范围只有 ±3°（真的是微调，不是换个方式转杆）
-const TOTAL_BALLS = 15;
+const FINE_SENS = 0.0016;                 // 每像素 0.092°：拖 100px 才 9°，真的是「微」
+const FINE_SHOW = 0.262;                  // 刻度条只显示 ±15°，纯显示范围，不是硬上限
+                                          // aimOffset 本身无上限，一直拖能转满 360°
+const TOTAL_BALLS = 8;
 const GROUP_CN = { solid:'全色', stripe:'花色' };
 
 function groupOf(n){
@@ -362,18 +379,21 @@ function rectInStage(el){
 function newRack(){
   balls = [];
   // 白球
-  balls.push({ x:-HW*0.62, z:0, vx:0, vz:0, n:0, alive:true });
+  balls.push({ x:-HW*0.60, z:0, vx:0, vz:0, n:0, alive:true });
 
-  // 标准三角堆，顶点朝 -x（朝白球）
-  const gap = BALL_R*2 + 0.0015;
-  const apexX = HW*0.60;
-  // 8 号固定在第三排正中；两角一实一花
-  const order = [1, 9, 2, 10, 8, 3, 11, 4, 12, 5, 13, 6, 14, 7, 15];
+  /* 8 颗球用菱形摆（1-2-3-2），8 号压在第 3 排正中 —— 台球里经典的钻石形，
+     比塞满 15 颗更适合现在放大的球径 */
+  const gap = BALL_R*2 + 0.0020;
+  const apexX = HW*0.52;
+  const rows = [1, 2, 3, 2];
+  // 1,2,3 排给 1~6 号，第 3 排正中给 8 号，最后一排 2 颗给 7 号和 9 号
+  const order = [1, 2, 3, 8, 4, 5, 6, 7];
   let k = 0;
-  for(let row = 0; row < 5; row++){
-    for(let i = 0; i <= row; i++){
+  for(let row = 0; row < rows.length; row++){
+    const cnt = rows[row];
+    for(let i = 0; i < cnt; i++){
       const x = apexX + row * gap * 0.866;
-      const z = (i - row/2) * gap;
+      const z = (i - (cnt - 1)/2) * gap;
       balls.push({ x, z, vx:0, vz:0, n: order[k++], alive:true });
     }
   }
@@ -497,6 +517,70 @@ function drawFx(c){
 }
 
 /* ══════════════════════════════════════════════════════════
+   进球赞美：随机不重复，飘字上升
+   ══════════════════════════════════════════════════════════ */
+const PRAISE = [
+  '漂亮！', '好球！', '这杆有点东西', '稳！', '干净利落', '进得真脆',
+  '角度刁钻', '神仙球', '这杆值钱', '手感来了', '教科书级别', '没毛病',
+  '赏心悦目', '一杆入魂', '这球会拐弯', '稳得一批', '利索！', '漂亮收杆',
+  '这杆有味道', '准得像尺子', '走位也到位', '清脆！', '这手不抖', '进球如喝水',
+  '可以啊老板', '这球懂你', '美如画', '这杆带感', '稳如老狗', '有点东西啊'
+];
+let praiseLastIdx = -1;
+const praiseFx = [];
+
+function addPraise(x, z){
+  let idx = Math.floor(Math.random() * PRAISE.length);
+  let guard = 0;
+  while(idx === praiseLastIdx && guard++ < 12){
+    idx = Math.floor(Math.random() * PRAISE.length);
+  }
+  praiseLastIdx = idx;
+  // 同一发连进好几颗时往上错开，别叠成一坨
+  const stack = praiseFx.filter(p => p.t < 0.55).length;
+  praiseFx.push({
+    x, z: z - stack * BALL_R * 1.35,
+    text: PRAISE[idx], t: 0, life: 1.30
+  });
+  if(praiseFx.length > 6) praiseFx.shift();
+}
+function stepPraise(dt){
+  for(let i = praiseFx.length - 1; i >= 0; i--){
+    praiseFx[i].t += dt;
+    if(praiseFx[i].t >= praiseFx[i].life) praiseFx.splice(i, 1);
+  }
+}
+function drawPraise(c){
+  setScreenTransform();
+  for(const p of praiseFx){
+    const k = p.t / p.life;
+    const pt = worldToScreen(p.x, p.z);
+    const rise = -k * 74;
+    // 弹一下再稳下来
+    const sc = k < 0.16 ? (0.45 + (k/0.16) * 0.85) : (1.30 - (k-0.16) * 0.20);
+    const al = k < 0.12 ? (k/0.12) : Math.max(0, 1 - Math.pow((k-0.12)/0.88, 2.4));
+    const fs = Math.max(13, 30 * sc);
+    const yy = pt.y + rise;
+    c.save();
+    c.globalAlpha = Math.max(0, Math.min(1, al));
+    c.textAlign = 'center';
+    c.textBaseline = 'middle';
+    c.font = `900 ${fs}px -apple-system,"PingFang SC","Noto Sans CJK SC",sans-serif`;
+    c.lineJoin = 'round';
+    c.lineWidth = Math.max(3, fs*0.17);
+    c.strokeStyle = 'rgba(12,10,26,.88)';
+    c.strokeText(p.text, pt.x, yy);
+    const g = c.createLinearGradient(pt.x, yy - fs*0.62, pt.x, yy + fs*0.62);
+    g.addColorStop(0,   '#fff8cc');
+    g.addColorStop(0.45,'#ffd750');
+    g.addColorStop(1,   '#ff9b3d');
+    c.fillStyle = g;
+    c.fillText(p.text, pt.x, yy);
+    c.restore();
+  }
+}
+
+/* ══════════════════════════════════════════════════════════
    物理
    ══════════════════════════════════════════════════════════ */
 function stepPhysics(dt){
@@ -505,13 +589,48 @@ function stepPhysics(dt){
 
   for(const b of balls){
     if(!b.alive) continue;
+    if(b.wx === undefined){ b.wx = 0; b.wz = 0; b.wy = 0; }
+
     const sp = Math.hypot(b.vx, b.vz);
-    if(sp < STOP_EPS){ b.vx = 0; b.vz = 0; continue; }
+    /* 接触点速度 u = v + ω×r。
+       台球真正的手感来自 u：u≠0 说明球在「打滑」，摩擦大；u=0 才是纯滚动，摩擦小。 */
+    const ux = b.vx + b.wz*BALL_R;
+    const uz = b.vz - b.wx*BALL_R;
+    const us = Math.hypot(ux, uz);
+
+    if(sp < STOP_EPS && us < STOP_EPS*2.5){
+      b.vx = 0; b.vz = 0; b.wx = 0; b.wz = 0;
+      b.wy *= Math.max(0, 1 - 5*dt);
+      if(Math.abs(b.wy) < 0.3) b.wy = 0;
+      continue;
+    }
     moving = true;
 
-    const ns = Math.max(0, sp - FRICTION*dt);
-    const kk = ns / sp;
-    b.vx *= kk; b.vz *= kk;
+    if(us > SLIDE_EPS){
+      /* ── 滑动阶段：减速快（μ_s），同时把线速度转成角速度 ──
+         接触点速度以 3.5·μ·g 的速率衰减，这才是真实的减速曲线 */
+      const a  = MU_SLIDE * G_ACC;
+      const ex = ux/us, ez = uz/us;
+      // 本步不能把 u 打过头，否则会在 0 附近来回震荡（表现为球小幅抖动）
+      const dec = 3.5 * a * dt;
+      const sc  = dec > us ? us/dec : 1;
+      b.vx -= a * sc * ex * dt;
+      b.vz -= a * sc * ez * dt;
+      b.wz += -(2.5 * a * sc / BALL_R) * ex * dt;
+      b.wx +=  (2.5 * a * sc / BALL_R) * ez * dt;
+    } else {
+      /* ── 纯滚动阶段：只有很小的滚动阻力，球能滚很远 ── */
+      const a = MU_ROLL * G_ACC;
+      if(sp > 1e-6){
+        const ns = Math.max(0, sp - a*dt);
+        b.vx = b.vx/sp*ns;
+        b.vz = b.vz/sp*ns;
+        b.wz = -b.vx / BALL_R;      // 纯滚：ω 锁死在 v 上
+        b.wx =  b.vz / BALL_R;
+      }
+    }
+    // 绕垂直轴的自转（左右塞）慢慢衰减
+    b.wy *= Math.max(0, 1 - 1.5*dt);
 
     b.x += b.vx*dt;
     b.z += b.vz*dt;
@@ -537,30 +656,26 @@ function stepPhysics(dt){
     const nearPocketZ = Math.abs(Math.abs(b.z) - HH) < POCKET_R*1.15;
 
     let bounced = false;
-    if(b.x < -lx && !nearPocketZ){
-      const nsp = Math.abs(b.vx);
-      b.x = -lx; b.vx = nsp*CUSHION; bounced = true;
-      if(b.n === 0 && shotLog && shotLog.sideX) b.vz += shotLog.sideX * nsp * 0.50;
-    }
-    if(b.x >  lx && !nearPocketZ){
-      const nsp = Math.abs(b.vx);
-      b.x = lx; b.vx = -nsp*CUSHION; bounced = true;
-      if(b.n === 0 && shotLog && shotLog.sideX) b.vz += shotLog.sideX * nsp * 0.50;
-    }
-    if(b.z < -lz && !nearPocketX){
-      const nsp = Math.abs(b.vz);
-      b.z = -lz; b.vz = nsp*CUSHION; bounced = true;
-      if(b.n === 0 && shotLog && shotLog.sideX) b.vx -= shotLog.sideX * nsp * 0.50;
-    }
-    if(b.z >  lz && !nearPocketX){
-      const nsp = Math.abs(b.vz);
-      b.z = lz; b.vz = -nsp*CUSHION; bounced = true;
-      if(b.n === 0 && shotLog && shotLog.sideX) b.vx -= shotLog.sideX * nsp * 0.50;
-    }
-    // 塞只在真正撞库时衰减（放在循环外面会每帧掉一半，等于没有）
-    if(bounced && b.n === 0 && shotLog && shotLog.sideX){
-      shotLog.sideX *= 0.55;
-    }
+    /* 库边：法向恢复(E_CUSH) + 切向摩擦(MU_CUSH) + 侧旋甩球
+       —— 原来只做 vz *= -0.87，球贴库会「直直弹回」，这就是不真实的一半原因 */
+    const cushiBounce = (nx, nz, vnAbs) => {
+      const tx = -nz, tz = nx;
+      const vt = b.vx*tx + b.vz*tz;
+      // 切向摩擦最多吃掉 MU_CUSH*(1+e)*|vn|，吃不完就按比例
+      const jtMax = MU_CUSH * (1 + E_CUSH) * vnAbs;
+      const jt = Math.min(Math.abs(vt), jtMax) * Math.sign(vt || 1);
+      // 绕垂直轴的自转（左右塞）会把球沿着库边甩出去
+      const spur = b.wy * BALL_R * 0.32;
+      const vtOut = vt - jt + spur;
+      const vnOut = vnAbs * E_CUSH;
+      b.vx = nx*vnOut + tx*vtOut;
+      b.vz = nz*vnOut + tz*vtOut;
+      b.wy *= 0.72;
+    };
+    if(b.x < -lx && !nearPocketZ){ b.x = -lx; cushiBounce( 1, 0, Math.abs(b.vx)); bounced = true; }
+    if(b.x >  lx && !nearPocketZ){ b.x =  lx; cushiBounce(-1, 0, Math.abs(b.vx)); bounced = true; }
+    if(b.z < -lz && !nearPocketX){ b.z = -lz; cushiBounce(0,  1, Math.abs(b.vz)); bounced = true; }
+    if(b.z >  lz && !nearPocketX){ b.z =  lz; cushiBounce(0, -1, Math.abs(b.vz)); bounced = true; }
     // 撞库特效（比撞球淡，是「砰」一下不是「啪」一下）
     if(bounced){
       addImpact(b.x, b.z, Math.min(0.50, Math.hypot(b.vx, b.vz) / 5.5));
@@ -571,7 +686,8 @@ function stepPhysics(dt){
       if(Math.hypot(b.x - px, b.z - pz) < POCKET_R * 0.88){
         b.alive = false; b.vx = 0; b.vz = 0;
         addSink(b.x, b.z, b.n);
-        addImpact(b.x, b.z, 0.45);
+        addImpact(b.x, b.z, 0.95);
+        if(b.n !== 0) addPraise(b.x, b.z);   // 白球掉袋别夸
         if(shotLog){
           shotLog.potted.push(b.n);
           if(b.n === 0) shotLog.cuePotted = true;
@@ -601,34 +717,32 @@ function stepPhysics(dt){
       const vn = rvx*nx + rvz*nz;
       if(vn > 0) continue;
 
-      // 撞前先记下白球的速度方向 —— 高低杆要沿这个方向补一脚
-      let cueObj = null, cueSp = 0, cueDx = 0, cueDz = 0;
-      if(a.n === 0) cueObj = a; else if(b.n === 0) cueObj = b;
-      if(cueObj){
-        cueSp = Math.hypot(cueObj.vx, cueObj.vz);
-        if(cueSp > 1e-4){ cueDx = cueObj.vx/cueSp; cueDz = cueObj.vz/cueSp; }
-      }
+      if(a.wx === undefined){ a.wx = 0; a.wz = 0; a.wy = 0; }
+      if(b.wx === undefined){ b.wx = 0; b.wz = 0; b.wy = 0; }
 
-      const imp = -vn * (1 + BALL_DAMP) / 2;
-      a.vx -= imp*nx; a.vz -= imp*nz;
-      b.vx += imp*nx; b.vz += imp*nz;
+      /* ① 法向冲量：等质量弹性碰撞 */
+      const jn = -(1 + E_BALL) * vn / 2;
+      a.vx -= jn*nx; a.vz -= jn*nz;
+      b.vx += jn*nx; b.vz += jn*nz;
+
+      /* ② 切向冲量 = throw 效应
+         真实球面有摩擦，接触点的切向速度不会全部保留：
+         目标球会被「带」着偏一点，白球也会被拖一下。
+         少了这一项，撞完永远是一条理想直线 —— 这就是「碰撞曲线不真实」的主因。 */
+      const tx = -nz, tz = nx;
+      const vt = rvx*tx + rvz*tz;
+      const jtMax = MU_BALL * Math.abs(jn);
+      let jt = -vt / 2;                        // 完全粘住所需要的冲量
+      if(Math.abs(jt) > jtMax) jt = Math.sign(jt) * jtMax;
+      a.vx -= jt*tx; a.vz -= jt*tz;
+      b.vx += jt*tx; b.vz += jt*tz;
+      // 切向摩擦顺带给两球一点反向自转
+      a.wy -= jt * 2.8 / BALL_R * 0.28;
+      b.wy += jt * 2.8 / BALL_R * 0.28;
 
       // 撞球特效（接触点，力度跟着相对速度走）
       if(-vn > 0.12){
         addImpact((a.x + b.x)/2, (a.z + b.z)/2, Math.min(1, -vn / 2.4));
-      }
-
-      // 高低杆：撞到目标球后沿原方向补一脚（正=跟杆继续走，负=缩杆往回拉）
-      if(cueObj && shotLog && !shotLog.spinDone && cueSp > 0.05){
-        const other = (cueObj === a) ? b : a;
-        if(other.n !== 0){
-          shotLog.spinDone = true;
-          const sv = shotLog.spinY || 0;
-          if(Math.abs(sv) > 0.02){
-            cueObj.vx += cueDx * sv * cueSp * 0.62;
-            cueObj.vz += cueDz * sv * cueSp * 0.62;
-          }
-        }
       }
 
       if(shotLog && shotLog.firstHit === null){
@@ -1432,7 +1546,7 @@ function drawSpinBall(){
 }
 
 /* ══════════════════════════════════════════════════════════
-   右侧角度微调刻度：在滑屏方向的基础上再细调 ±20°
+   右侧角度微调刻度：增量式，拖多少转多少，能一直转到 360°
    ══════════════════════════════════════════════════════════ */
 function drawFineBar(){
   const W = fb.width / DPR, H = fb.height / DPR;
@@ -1463,7 +1577,7 @@ function drawFineBar(){
   fbx.fillRect(bx, cy - bh*0.055, bw, bh*0.11);
   fbx.restore();
 
-  // 刻度：±3° 一共 13 条，每格 0.5°
+  // 刻度：13 条刻度线只是视觉标尺，实际角度无上限
   const steps = 6;
   for(let i = -steps; i <= steps; i++){
     const y = cy + (bh/2 - 8) * (i / steps);
@@ -1478,10 +1592,15 @@ function drawFineBar(){
     fbx.stroke();
   }
 
-  // 指针
-  const t  = Math.max(-1, Math.min(1, aimOffset / FINE_MAX));
+  // 指针：位置只映射到 ±15° 的显示范围，超出就贴边（角度本身还在变）
+  const raw = aimOffset / FINE_SHOW;
+  const t  = Math.max(-1, Math.min(1, raw));
+  const over = Math.abs(raw) > 1;
   const py = cy + (bh/2 - 8) * t;
-  fbx.fillStyle = Math.abs(t) < 0.02 ? '#8ef0b0' : '#ffd750';
+  const deg = Math.round(aimOffset * 180 / Math.PI);
+  if(fineValEl) fineValEl.textContent = (deg > 0 ? '+' : '') + deg + '°';
+  const hot  = over ? '#ff7a5a' : (Math.abs(t) < 0.02 ? '#8ef0b0' : '#ffd750');
+  fbx.fillStyle = hot;
   fbx.beginPath();
   fbx.moveTo(bx + bw + 3.5, py);
   fbx.lineTo(bx + bw - 2.5, py - 6.5);
@@ -1491,9 +1610,11 @@ function drawFineBar(){
   fbx.strokeStyle = 'rgba(90,60,0,.85)';
   fbx.lineWidth = 1;
   fbx.stroke();
-  fbx.strokeStyle = Math.abs(t) < 0.02 ? 'rgba(142,240,176,.95)' : 'rgba(255,215,80,.95)';
+  fbx.strokeStyle = hot;
+  fbx.globalAlpha = 0.95;
   fbx.lineWidth = 1.8;
   fbx.beginPath(); fbx.moveTo(bx, py); fbx.lineTo(bx + bw, py); fbx.stroke();
+  fbx.globalAlpha = 1;
 }
 
 /* ══════════════════════════════════════════════════════════
@@ -1553,10 +1674,11 @@ function draw(){
   drawCue(ctx);
 
   drawBallNumbers(ctx);
+  drawPraise(ctx);
 }
 
 /* ══════════════════════════════════════════════════════════
-   练习模式规则：没有对手、不分组、不换边 —— 把 15 颗球全打进去就算完
+   练习模式规则：没有对手、不分组、不换边 —— 把 8 颗球全打进去就算完
    ══════════════════════════════════════════════════════════ */
 function remainingOf(g){
   if(!g) return 0;
@@ -1601,7 +1723,7 @@ function winGame(){
   showModal(
     '🏆',
     '全 部 打 完',
-    `15 颗球清台完成<br><br>用时 <b>${t}</b> · 共 <b>${shots}</b> 杆` +
+    `8 颗球清台完成<br><br>用时 <b>${t}</b> · 共 <b>${shots}</b> 杆` +
     `<br><span style="color:#7f8ab0">平均 ${(shots/15).toFixed(1)} 杆一颗</span>`,
     '',
     [{ t:'再来一局', fn: newGame }]
@@ -1747,7 +1869,7 @@ function showModal(ic, title, html, cls, buttons){
 
 function showRules(){
   showModal('📖', '练 习 模 式', `
-<b>玩法</b><br>没有对手，一个人把台面 15 颗球（1~15 号）全部打进就通关。<br><br>
+<b>玩法</b><br>没有对手，一个人把台面 8 颗球（1~8 号，菱形摆）全部打进就通关。<br><br>
 <b>白球落袋</b><br>不罚，白球会自动回到台面，你可以直接拖到想放的位置继续打。<br><br>
 <b>建议顺序</b><br>顶部会提示「下一个 N 号」，按号码从小到大打，练走位最有效。<br><br>
 <b>操作</b><br>
@@ -1756,7 +1878,7 @@ function showRules(){
 ③ 松手就出杆<br><br>
 <b>右侧两件</b><br>
 · 上面那颗<span style="color:#ff8a8a">白球</span> → 拖球心的红点加塞：往上高杆、往下低杆、左右是左右塞<br>
-· 下面那条<span style="color:#ffd750">刻度</span> → 角度微调，在滑屏方向的基础上再细调 ±20°<br><br>
+· 下面那条<span style="color:#ffd750">刻度</span> → 角度微调：上下拖，拖多少转多少（每 100px 约 9°），一直拖能转满一圈<br><br>
 <b>瞄准辅助</b><br>
 · 白虚线 = 白球飞行路线<br>
 · 白色空圈 = 幽灵球（白球撞上去那一刻的位置）<br>
@@ -1807,10 +1929,11 @@ function onMove(e){
   updateAimFrom(w);
 }
 
-/* 大方向 + 微调偏移 = 最终杆向 */
+/* 大方向 + 微调偏移 = 最终杆向（偏移无上限，可以转满一圈） */
 function applyAim(){
   const a = Math.atan2(aimBase.z, aimBase.x) + aimOffset;
   aimDir = { x: Math.cos(a), z: Math.sin(a) };
+  drawFineBar();
 }
 
 function updateAimFrom(w){
@@ -1846,14 +1969,28 @@ function doShoot(){
   const v = MAX_SPEED * Math.pow(power, 0.85);
   cb.vx = aimDir.x * v;
   cb.vz = aimDir.z * v;
+  applyCueSpin(cb, v);
   shots++;
   shooting = true;
-  shotLog = { firstHit:null, potted:[], cuePotted:false,
-              spinY: spinY, sideX: spinX, spinDone:false };
+  shotLog = { firstHit:null, potted:[], cuePotted:false, spinY: spinY, sideX: spinX };
   shotStartT = performance.now();
   power = 0;
   drawPowerBar();
   updateHUD();
+}
+
+/* 击球点 → 初始角速度。这是高低杆唯一的来源：
+   中杆 ω=0（球先纯滑动，很快被摩擦带成滚动）；
+   高杆 ω 前旋过剩 → 接触点朝后打滑 → 摩擦推着球继续加速跑更远；
+   低杆 ω 反向 → 摩擦把球往后拽 → 缩杆。
+   撞到目标球后白球速度骤减但 ω 还在，于是自动产生跟杆/缩杆，
+   不再需要在碰撞里「补一脚」。 */
+function applyCueSpin(cb, v){
+  const rollOmega = v / BALL_R;                 // 纯滚对应的角速度
+  const k = (spinY || 0) * 1.75;                // 真实上限约 ±1.75 倍
+  cb.wx =  aimDir.z * rollOmega * k;
+  cb.wz = -aimDir.x * rollOmega * k;
+  cb.wy =  (spinX || 0) * rollOmega * 0.55;     // 左右塞 → 绕垂直轴自转
 }
 
 /* ══════════════════════════════════════════════════════════
@@ -1886,6 +2023,7 @@ function loop(t){
   }
 
   stepFx(dt);          // 特效自己走，球停了也要把火花/落袋动画播完
+  stepPraise(dt);
   draw();
 }
 
@@ -2027,21 +2165,24 @@ spinWrapEl.addEventListener('touchmove',  e => { e.preventDefault(); onSpinMove(
 spinWrapEl.addEventListener('touchend',   e => { e.preventDefault(); onSpinUp(e); },   { passive:false });
 spinWrapEl.addEventListener('contextmenu', e => e.preventDefault());
 
-/* ── 角度微调交互：上下拖右侧刻度 ── */
-let fineDragging = false;
+/* ── 角度微调：增量式，拖多少转多少，没有硬上限（能一直转到 360°）── */
+let fineDragging = false, fineLastY = 0;
 const fineWrapEl = document.getElementById('fineWrap');
+const fineValEl  = document.getElementById('fineVal');
 
-function fineFromEvent(e){
+function normAngle(a){
+  while(a >  Math.PI) a -= Math.PI*2;
+  while(a < -Math.PI) a += Math.PI*2;
+  return a;
+}
+function fineFromEvent(e, first){
   const t0 = e.touches ? e.touches[0] : e;
   const p  = toStage(t0.clientX, t0.clientY);
-  const r  = rectInStage(fb);
-  const cy = r.top + r.height/2;
-  const half = Math.max(1, r.height/2 - 10);
-  let v = Math.max(-1, Math.min(1, (p.y - cy) / half));
-  if(Math.abs(v) < 0.08) v = 0;        // 中位吸附：方便精确回正
-  aimOffset = v * FINE_MAX;
+  if(first){ fineLastY = p.y; return; }
+  const dy = p.y - fineLastY;
+  fineLastY = p.y;
+  aimOffset = normAngle(aimOffset + dy * FINE_SENS);
   applyAim();
-  drawFineBar();
 }
 
 function onFineDown(e){
@@ -2049,12 +2190,12 @@ function onFineDown(e){
   if(e.cancelable) e.preventDefault();
   fineDragging = true;
   fineWrapEl.classList.add('active');
-  fineFromEvent(e);
+  fineFromEvent(e, true);
 }
 function onFineMove(e){
   if(!fineDragging) return;
   if(e.cancelable) e.preventDefault();
-  fineFromEvent(e);
+  fineFromEvent(e, false);
 }
 function onFineUp(){
   if(!fineDragging) return;
@@ -2099,7 +2240,7 @@ window.__G = {
   get spinY(){ return spinY; },
   get aimOffset(){ return aimOffset; },
   get aimDeg(){ return +(aimOffset * 180 / Math.PI).toFixed(1); },
-  setFine(v){ aimOffset = Math.max(-1, Math.min(1, v)) * FINE_MAX; applyAim(); drawFineBar(); },
+  setFine(deg){ aimOffset = normAngle(deg * Math.PI/180); applyAim(); },
   get firstHit(){ return shotLog ? shotLog.firstHit : null; },
   get lastPotted(){ return shotLog ? shotLog.potted.slice() : null; },
   get lastCuePotted(){ return shotLog ? shotLog.cuePotted : null; },
@@ -2118,8 +2259,8 @@ window.__G = {
   _shoot(vx, vz){
     const cb = cueBall(); if(!cb) return;
     cb.vx = vx; cb.vz = vz; shooting = true; shots++;
-    shotLog = { firstHit:null, potted:[], cuePotted:false,
-                spinY: spinY, sideX: spinX, spinDone:false };
+    applyCueSpin(cb, Math.hypot(vx, vz));
+    shotLog = { firstHit:null, potted:[], cuePotted:false, spinY: spinY, sideX: spinX };
     shotStartT = performance.now();
   },
   _setAim(dx, dz, p){
