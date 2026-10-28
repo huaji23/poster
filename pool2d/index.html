@@ -43,21 +43,48 @@
            border-radius:9px;padding:1px 8px;white-space:nowrap}
   #turnTag.ai{color:#ffcc4d;border-color:rgba(255,204,77,.45);background:rgba(28,20,6,.75)}
 
-  /* ── 右侧：力度尺（可拖动，松手即击球） ── */
-  #powerWrap{position:fixed;right:4px;top:50%;transform:translateY(-50%);
+  /* ── 左侧：力度（球杆在杆架里上下滑） ── */
+  #powerWrap{position:fixed;left:6px;top:50%;transform:translateY(-50%);
              z-index:10;pointer-events:auto;touch-action:none;cursor:pointer;
-             padding:6px;border-radius:18px;
-             background:rgba(18,14,38,.42);
-             border:1px solid rgba(255,255,255,.12);
-             box-shadow:0 4px 16px rgba(0,0,0,.35)}
-  #powerBar{width:26px;height:190px;display:block;pointer-events:none}
+             padding:5px 6px;border-radius:16px;
+             background:rgba(18,14,38,.45);
+             border:1px solid rgba(255,255,255,.13);
+             box-shadow:0 4px 16px rgba(0,0,0,.38)}
+  #powerBar{width:30px;display:block;pointer-events:none}
+
+  /* ── 右侧：加塞球（球心红点可拖） ── */
+  #spinWrap{position:fixed;right:8px;top:50%;transform:translateY(-50%);
+            z-index:10;pointer-events:auto;touch-action:none;cursor:pointer;
+            padding:5px;border-radius:50%;
+            background:rgba(18,14,38,.45);
+            border:1px solid rgba(255,255,255,.13);
+            box-shadow:0 4px 16px rgba(0,0,0,.38)}
+  #spinBall{width:52px;height:52px;display:block;pointer-events:none}
+  #spinWrap.active{border-color:rgba(255,204,77,.75);
+                   box-shadow:0 0 18px rgba(255,204,77,.45)}
+  #spinLbl{position:fixed;right:8px;z-index:10;pointer-events:none;
+           font-size:9.5px;color:#8e9ac0;letter-spacing:.5px;text-align:center;
+           width:64px}
+
+  /* ── 竖屏提示 ── */
+  #rotateTip{position:fixed;inset:0;z-index:150;display:none;
+    flex-direction:column;align-items:center;justify-content:center;gap:14px;
+    background:rgba(12,9,26,.96);padding:24px;text-align:center}
+  #rotateTip.show{display:flex}
+  #rotateTip .ico{font-size:52px;animation:rot 1.8s ease-in-out infinite}
+  @keyframes rot{0%,40%{transform:rotate(0)}60%,100%{transform:rotate(90deg)}}
+  #rotateTip .tx{font-size:15px;font-weight:800;color:#e8eaf0;line-height:1.7}
+  #rotateTip .sub{font-size:12px;color:#7c86ad;line-height:1.7;max-width:260px}
+  #rotateTip button{margin-top:6px;border:1px solid rgba(120,140,220,.45);
+    background:transparent;color:#9aa4c8;border-radius:14px;padding:9px 18px;
+    font-size:12px;font-family:inherit;cursor:pointer}
 
   /* ── 底部按钮 ── */
-  #bar{position:fixed;left:50%;transform:translateX(-50%);bottom:8px;
-       display:flex;gap:8px;z-index:10}
-  #bar button{border:1px solid rgba(255,255,255,.16);border-radius:16px;
-    padding:8px 16px;font-size:12px;font-weight:800;font-family:inherit;
-    color:#c8d3f0;background:rgba(30,36,84,.86);backdrop-filter:blur(8px);
+  #bar{position:fixed;left:50%;transform:translateX(-50%);bottom:5px;
+       display:flex;gap:7px;z-index:10}
+  #bar button{border:1px solid rgba(255,255,255,.16);border-radius:13px;
+    padding:5px 13px;font-size:11px;font-weight:800;font-family:inherit;
+    color:#c8d3f0;background:rgba(30,36,84,.82);backdrop-filter:blur(8px);
     cursor:pointer;transition:transform .12s}
   #bar button:active{transform:scale(.94)}
   #bar button:focus-visible{outline:2px solid #7ee8a2;outline-offset:3px}
@@ -120,11 +147,21 @@
 
 <div id="powerWrap"><canvas id="powerBar"></canvas></div>
 
-<div id="msg">① 拖台面瞄准　② 上下拖右侧力度尺　③ 松手击球</div>
+<div id="spinWrap"><canvas id="spinBall"></canvas></div>
+<div id="spinLbl">加塞</div>
+
+<div id="msg">① 左右滑屏幕瞄准　② 拖左边调力度　③ 松手出杆</div>
 
 <div id="bar">
   <button id="btnRules">规则</button>
   <button id="btnRestart">重开</button>
+</div>
+
+<div id="rotateTip">
+  <div class="ico">📱</div>
+  <div class="tx">把手机横过来玩</div>
+  <div class="sub">这个台球是横屏的，竖着拿球台会很小、力度尺和加塞球也会挤在一起</div>
+  <button id="rotateSkip">仍然竖屏继续</button>
 </div>
 
 <div id="modal"><div id="card"></div></div>
@@ -185,6 +222,8 @@ const cv  = document.getElementById('cv');
 const ctx = cv.getContext('2d');
 const pw  = document.getElementById('powerBar');
 const pwx = pw.getContext('2d');
+const sb  = document.getElementById('spinBall');
+const sbx = sb.getContext('2d');
 
 let DPR = 1, VW = 0, VH = 0;
 let SCALE = 1;          // 米 → CSS 像素
@@ -205,6 +244,7 @@ let power = 0;
 let placing = false;
 let shotStartT = 0;
 let elapsed = 0;                          // 累计用时（秒）
+let spinX = 0, spinY = 0;                 // 加塞：x 左右(-1..1)，y 上下(-1..1，正=高杆)
 const TOTAL_BALLS = 15;
 const GROUP_CN = { solid:'全色', stripe:'花色' };
 
@@ -224,32 +264,26 @@ function nextTargetBall(){
 }
 
 /* ══════════════════════════════════════════════════════════
-   坐标变换：台面米 → 屏幕 CSS 像素
+   坐标变换：台面米 → 屏幕 CSS 像素（固定横版，不旋转）
    ══════════════════════════════════════════════════════════ */
 function worldToScreen(tx, tz){
-  if(PORTRAIT) return { x: CX + tz*SCALE, y: CY - tx*SCALE };
   return { x: CX + tx*SCALE, y: CY + tz*SCALE };
 }
 function screenToWorld(sx, sy){
-  if(PORTRAIT) return { x: (CY - sy)/SCALE, z: (sx - CX)/SCALE };
   return { x: (sx - CX)/SCALE, z: (sy - CY)/SCALE };
 }
-/* 给 ctx 设成「台面坐标」的变换矩阵，之后所有绘制直接用米 */
 function setWorldTransform(){
-  if(PORTRAIT){
-    // x' =  tz*S + CX ;  y' = -tx*S + CY
-    ctx.setTransform(0, -SCALE*DPR, SCALE*DPR, 0, CX*DPR, CY*DPR);
-  } else {
-    ctx.setTransform(SCALE*DPR, 0, 0, SCALE*DPR, CX*DPR, CY*DPR);
-  }
+  ctx.setTransform(SCALE*DPR, 0, 0, SCALE*DPR, CX*DPR, CY*DPR);
 }
 function setScreenTransform(){
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
 }
 
 /* ══════════════════════════════════════════════════════════
-   布局
+   布局：横屏。左边留力度杆、右边留加塞球
    ══════════════════════════════════════════════════════════ */
+let portraitDismissed = false;
+
 function layout(){
   DPR = Math.min(window.devicePixelRatio || 1, 2.5);
   VW = window.innerWidth;
@@ -259,35 +293,55 @@ function layout(){
   cv.style.width  = VW + 'px';
   cv.style.height = VH + 'px';
 
-  PORTRAIT = VH > VW;
+  PORTRAIT = false;                 // 始终横版台面
 
-  // HUD 高 ≈ 52、底部按钮 ≈ 36、右侧力度尺 ≈ 32
-  const PAD_T = 56, PAD_B = 44, PAD_R = 32, PAD_L = 6;
+  // 竖屏时弹提示（除非用户点过「仍然继续」）
+  const tip = document.getElementById('rotateTip');
+  if(tip){
+    if(VH > VW && !portraitDismissed) tip.classList.add('show');
+    else tip.classList.remove('show');
+  }
+
+  const PAD_L = 50;    // 左侧力度杆
+  const PAD_R = 74;    // 右侧加塞球
+  const PAD_T = 54;    // HUD
+  const PAD_B = 42;    // 底部按钮
+
   const availW = Math.max(120, VW - PAD_L - PAD_R);
-  const availH = Math.max(120, VH - PAD_T - PAD_B);
+  const availH = Math.max(100, VH - PAD_T - PAD_B);
 
-  // 台子 + 库边的外框尺寸
   const outerW = TABLE_W + RAIL_W*2;
   const outerH = TABLE_H + RAIL_W*2;
 
-  // 竖屏时台子旋转 90°，外框的屏幕宽高互换
-  const boxW = PORTRAIT ? outerH : outerW;
-  const boxH = PORTRAIT ? outerW : outerH;
-
-  SCALE = Math.min(availW / boxW, availH / boxH);
+  SCALE = Math.min(availW / outerW, availH / outerH);
   if(!isFinite(SCALE) || SCALE <= 0) SCALE = 1;
 
   CX = PAD_L + availW/2;
   CY = PAD_T + availH/2;
 
-  // 力度尺
-  const pbH = Math.min(200, Math.max(120, availH * 0.5));
+  // 左侧力度杆
+  const pbH = Math.min(230, Math.max(110, availH - 10));
+  pw.style.width  = '30px';
   pw.style.height = pbH + 'px';
-  pw.width  = Math.round(26 * DPR);
+  pw.width  = Math.round(30 * DPR);
   pw.height = Math.round(pbH * DPR);
+
+  // 右侧加塞球
+  const sbSize = Math.min(54, Math.max(38, availH * 0.16));
+  sb.style.width  = sbSize + 'px';
+  sb.style.height = sbSize + 'px';
+  sb.width  = Math.round(sbSize * DPR);
+  sb.height = Math.round(sbSize * DPR);
+  const lbl = document.getElementById('spinLbl');
+  if(lbl){
+    const r = document.getElementById('spinWrap').getBoundingClientRect();
+    lbl.style.top  = (r.bottom + 3) + 'px';
+    lbl.style.left = (r.left + r.width/2 - 32) + 'px';
+  }
 
   draw();
   drawPowerBar();
+  drawSpinBall();
 }
 
 /* ══════════════════════════════════════════════════════════
@@ -339,10 +393,31 @@ function stepPhysics(dt){
     const nearPocketX = Math.abs(Math.abs(b.x) - HW) < POCKET_R*1.15;
     const nearPocketZ = Math.abs(Math.abs(b.z) - HH) < POCKET_R*1.15;
 
-    if(b.x < -lx && !nearPocketZ){ b.x = -lx; b.vx =  Math.abs(b.vx)*CUSHION; }
-    if(b.x >  lx && !nearPocketZ){ b.x =  lx; b.vx = -Math.abs(b.vx)*CUSHION; }
-    if(b.z < -lz && !nearPocketX){ b.z = -lz; b.vz =  Math.abs(b.vz)*CUSHION; }
-    if(b.z >  lz && !nearPocketX){ b.z =  lz; b.vz = -Math.abs(b.vz)*CUSHION; }
+    let bounced = false;
+    if(b.x < -lx && !nearPocketZ){
+      const nsp = Math.abs(b.vx);
+      b.x = -lx; b.vx = nsp*CUSHION; bounced = true;
+      if(b.n === 0 && shotLog && shotLog.sideX) b.vz += shotLog.sideX * nsp * 0.50;
+    }
+    if(b.x >  lx && !nearPocketZ){
+      const nsp = Math.abs(b.vx);
+      b.x = lx; b.vx = -nsp*CUSHION; bounced = true;
+      if(b.n === 0 && shotLog && shotLog.sideX) b.vz += shotLog.sideX * nsp * 0.50;
+    }
+    if(b.z < -lz && !nearPocketX){
+      const nsp = Math.abs(b.vz);
+      b.z = -lz; b.vz = nsp*CUSHION; bounced = true;
+      if(b.n === 0 && shotLog && shotLog.sideX) b.vx -= shotLog.sideX * nsp * 0.50;
+    }
+    if(b.z >  lz && !nearPocketX){
+      const nsp = Math.abs(b.vz);
+      b.z = lz; b.vz = -nsp*CUSHION; bounced = true;
+      if(b.n === 0 && shotLog && shotLog.sideX) b.vx -= shotLog.sideX * nsp * 0.50;
+    }
+    // 塞只在真正撞库时衰减（放在循环外面会每帧掉一半，等于没有）
+    if(bounced && b.n === 0 && shotLog && shotLog.sideX){
+      shotLog.sideX *= 0.55;
+    }
 
     // 袋
     for(const [px, pz] of POCKETS){
@@ -377,9 +452,30 @@ function stepPhysics(dt){
       const vn = rvx*nx + rvz*nz;
       if(vn > 0) continue;
 
+      // 撞前先记下白球的速度方向 —— 高低杆要沿这个方向补一脚
+      let cueObj = null, cueSp = 0, cueDx = 0, cueDz = 0;
+      if(a.n === 0) cueObj = a; else if(b.n === 0) cueObj = b;
+      if(cueObj){
+        cueSp = Math.hypot(cueObj.vx, cueObj.vz);
+        if(cueSp > 1e-4){ cueDx = cueObj.vx/cueSp; cueDz = cueObj.vz/cueSp; }
+      }
+
       const imp = -vn * (1 + BALL_DAMP) / 2;
       a.vx -= imp*nx; a.vz -= imp*nz;
       b.vx += imp*nx; b.vz += imp*nz;
+
+      // 高低杆：撞到目标球后沿原方向补一脚（正=跟杆继续走，负=缩杆往回拉）
+      if(cueObj && shotLog && !shotLog.spinDone && cueSp > 0.05){
+        const other = (cueObj === a) ? b : a;
+        if(other.n !== 0){
+          shotLog.spinDone = true;
+          const sv = shotLog.spinY || 0;
+          if(Math.abs(sv) > 0.02){
+            cueObj.vx += cueDx * sv * cueSp * 0.62;
+            cueObj.vz += cueDz * sv * cueSp * 0.62;
+          }
+        }
+      }
 
       if(shotLog && shotLog.firstHit === null){
         if(a.n === 0 && b.n !== 0) shotLog.firstHit = b.n;
@@ -544,25 +640,25 @@ function drawTable(c){
 
   /* ── 袋口：金属包角 = 圆角板 − 椭圆洞（evenodd）──
      关键：内缘直接等于洞的轮廓，所以不可能出现「白色方框里包个蛋、四角还露着」 */
-  const OUT_W    = RAIL_W + 0.014;
-  const R_OUT    = 0.085;
-  const R_IN     = 0.010;
+  const OUT_W    = RAIL_W + 0.002;     // 金属外缘和桌子外沿齐平，不甩出去
+  const R_OUT    = 0.040;              // 外角圆角（原来 0.085 太肿）
+  const R_IN     = 0.009;
   const HR       = POCKET_R * 0.98;    // 洞半径
-  const PLATE_IN = HR * 0.62;          // 板子向台内只伸到圆里面 → 内角一定被切掉
+  const PLATE_IN = HR * 0.62;          // 金属向台内伸多少（必须 < 0.707*HR，内角才被圆吃掉）
 
   for(const [px, pz] of POCKETS){
     const isCorner = (px !== 0);
-    // 洞心：角袋稍微往外挪，中袋就在袋心
-    const hx = px + (isCorner ? Math.sign(px)*0.006 : 0);
-    const hz = pz + Math.sign(pz)*0.006;
-    const rx = isCorner ? HR : HR * 1.10;
-    const rz = isCorner ? HR : HR * 0.86;
+    const sx = isCorner ? Math.sign(px) : 0;
+    const sz = Math.sign(pz);
+    // 洞心压在台角 / 库边线上：洞比金属略大，外圈留一圈窄边
+    const hx = px, hz = pz;
+    const rx = HR, rz = HR;    // 六个袋口全都是正圆（中袋不是扁的）
 
     c.save();
 
     /* 1) 板子轮廓 */
     if(isCorner){
-      const sx = Math.sign(px), sz = Math.sign(pz);
+      // 角袋：方板，外缘和桌子外沿齐平，内侧伸一点到台呢上
       const x0 = Math.min(hx - sx*PLATE_IN, hx + sx*OUT_W);
       const x1 = Math.max(hx - sx*PLATE_IN, hx + sx*OUT_W);
       const z0 = Math.min(hz - sz*PLATE_IN, hz + sz*OUT_W);
@@ -573,11 +669,10 @@ function drawTable(c){
       const rTL = (sx < 0 && sz < 0) ? R_OUT : R_IN;
       perCornerRect(c, x0, z0, x1-x0, z1-z0, rTL, rTR, rBR, rBL);
     } else {
-      // 中袋：金属只留在木库侧 —— 从洞心开始，一点都别往台呢上伸
-      const sz = Math.sign(pz);
-      const zA = hz, zB = hz + sz*OUT_W;
-      const z0 = Math.min(zA, zB), z1 = Math.max(zA, zB);
-      roundRectPath(c, -0.105, z0, 0.210, z1-z0, 0.024);
+      // 中袋：内缘正好压在台呢边线上（一点不压绿布），沿库横向一段
+      const z0 = Math.min(pz, pz + sz*OUT_W);
+      const z1 = Math.max(pz, pz + sz*OUT_W);
+      roundRectPath(c, -0.078, z0, 0.156, z1-z0, 0.012);
     }
 
     /* 2) 减去洞 → 包角内缘变成圆弧 */
@@ -946,11 +1041,11 @@ function mix(a, b, t){
    力度尺（竖向银灰标尺 + 黄色三角指针）
    ══════════════════════════════════════════════════════════ */
 function drawPowerBar(){
-  const W = 26, H = pw.height / DPR;
+  const W = pw.width / DPR, H = pw.height / DPR;
   pwx.setTransform(DPR, 0, 0, DPR, 0, 0);
   pwx.clearRect(0, 0, W, H);
 
-  const bx = 6, bw = W - 12, top = 4, bh = H - 8;
+  const bx = 5, bw = W - 10, top = 4, bh = H - 8;
 
   // 尺身
   const gg = pwx.createLinearGradient(bx, 0, bx + bw, 0);
@@ -993,6 +1088,23 @@ function drawPowerBar(){
     pwx.restore();
   }
 
+  // 杆身的示意：杆头停在指针上，力越大杆拉得越出去（跟腾讯左边那根杆一个意思）
+  pwx.save();
+  roundRectPath(pwx, bx, top, bw, bh, bw/2);
+  pwx.clip();
+  const cw = Math.max(3, bw*0.22);
+  const cxx = bx + bw/2 - cw/2;
+  const wd = pwx.createLinearGradient(cxx, 0, cxx + cw, 0);
+  wd.addColorStop(0,   'rgba(120,78,42,.55)');
+  wd.addColorStop(0.4, 'rgba(214,170,120,.55)');
+  wd.addColorStop(1,   'rgba(96,60,32,.55)');
+  pwx.fillStyle = wd;
+  pwx.fillRect(cxx, top - 2, cw, Math.max(0, py - top + 2));
+  // 杆头
+  pwx.fillStyle = 'rgba(240,244,250,.85)';
+  pwx.fillRect(cxx, py - 3, cw, 3);
+  pwx.restore();
+
   // 刻度（左右交错）
   const N = 20;
   pwx.strokeStyle = 'rgba(24,30,46,.78)';
@@ -1030,6 +1142,52 @@ function drawPowerBar(){
   pwx.moveTo(9, py); pwx.lineTo(bx + bw, py);
   pwx.stroke();
   pwx.restore();
+}
+
+/* ══════════════════════════════════════════════════════════
+   右侧加塞球：白球 + 可拖的红点准心
+   ══════════════════════════════════════════════════════════ */
+function drawSpinBall(){
+  const W = sb.width / DPR, H = sb.height / DPR;
+  sbx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  sbx.clearRect(0, 0, W, H);
+
+  const cx = W/2, cy = H/2, R = Math.min(W, H)/2 - 1;
+
+  // 球体
+  const g = sbx.createRadialGradient(cx - R*0.34, cy - R*0.38, R*0.06, cx, cy, R*1.06);
+  g.addColorStop(0,    '#ffffff');
+  g.addColorStop(0.42, '#f4f2ea');
+  g.addColorStop(0.78, '#dcd8cc');
+  g.addColorStop(1,    '#a9a497');
+  sbx.fillStyle = g;
+  sbx.beginPath(); sbx.arc(cx, cy, R, 0, Math.PI*2); sbx.fill();
+  sbx.strokeStyle = 'rgba(28,28,38,.6)';
+  sbx.lineWidth = 1.4;
+  sbx.stroke();
+
+  // 同心圈 + 十字线
+  sbx.strokeStyle = 'rgba(120,122,138,.26)';
+  sbx.lineWidth = 1;
+  for(const k of [0.45, 0.75]){
+    sbx.beginPath(); sbx.arc(cx, cy, R*k, 0, Math.PI*2); sbx.stroke();
+  }
+  sbx.strokeStyle = 'rgba(120,122,138,.40)';
+  sbx.beginPath(); sbx.moveTo(cx - R*0.82, cy); sbx.lineTo(cx + R*0.82, cy); sbx.stroke();
+  sbx.beginPath(); sbx.moveTo(cx, cy - R*0.82); sbx.lineTo(cx, cy + R*0.82); sbx.stroke();
+
+  // 红色准心（高杆在上、低杆在下、左右塞在两侧）
+  const px2 = cx + spinX * R * 0.72;
+  const py2 = cy - spinY * R * 0.72;
+  const rg = sbx.createRadialGradient(px2 - R*0.08, py2 - R*0.08, R*0.02, px2, py2, R*0.30);
+  rg.addColorStop(0, '#ff7b7b');
+  rg.addColorStop(0.6, '#e02a2a');
+  rg.addColorStop(1, '#a01414');
+  sbx.fillStyle = rg;
+  sbx.beginPath(); sbx.arc(px2, py2, R*0.26, 0, Math.PI*2); sbx.fill();
+  sbx.strokeStyle = 'rgba(80,0,0,.85)';
+  sbx.lineWidth = 1.2;
+  sbx.stroke();
 }
 
 /* ══════════════════════════════════════════════════════════
@@ -1354,7 +1512,7 @@ function onMove(e){
 function updateAimFrom(w){
   const cb = cueBall();
   if(!cb) return;
-  // 拖球桌只改方向，不改力度（力度统一由右侧力度尺控制，跟腾讯桌球一致）
+  // 左右滑屏幕只改方向，力度统一由左边的力度杆控制（跟腾讯桌球一致）
   let dx = w.x - cb.x, dz = w.z - cb.z;
   const len = Math.hypot(dx, dz);
   if(len < 0.012) return;
@@ -1367,13 +1525,13 @@ function onUp(e){
     ballInHand = false;
     dragStart = null;
     updateHUD();
-    toast('白球摆好了 · 拖力度尺击球');
+    toast('白球摆好了 · 拖左边力度杆击球');
     return;
   }
   if(!aiming) return;
   aiming = false;
   dragStart = null;
-  // 松手不再击球 —— 力度和出手都由右侧力度尺负责
+  // 松手不再击球 —— 力度和出手都由左边的力度杆负责
 }
 
 function doShoot(){
@@ -1384,7 +1542,8 @@ function doShoot(){
   cb.vz = aimDir.z * v;
   shots++;
   shooting = true;
-  shotLog = { firstHit:null, potted:[], cuePotted:false };
+  shotLog = { firstHit:null, potted:[], cuePotted:false,
+              spinY: spinY, sideX: spinX, spinDone:false };
   shotStartT = performance.now();
   power = 0;
   drawPowerBar();
@@ -1435,6 +1594,7 @@ function newGame(){
   aiming = false;
   placing = false;
   power = 0;
+  spinX = 0; spinY = 0;
   aimDir = { x: 1, z: 0 };
   document.getElementById('modal').classList.remove('show');
   newRack();
@@ -1442,7 +1602,8 @@ function newGame(){
   lastShownSec = -1;
   updateHUD();
   drawPowerBar();
-  toast('开球 · 拖台面瞄准，再上下拖右侧力度尺，松手出杆');
+  drawSpinBall();
+  toast('左右滑屏幕瞄准 · 拖左边力度杆出杆 · 右边球上加塞');
 }
 
 /* ══════════════════════════════════════════════════════════
@@ -1507,6 +1668,59 @@ pwWrap.addEventListener('touchmove',  e => { e.preventDefault(); onPowerMove(e);
 pwWrap.addEventListener('touchend',   e => { e.preventDefault(); onPowerUp(e); },   { passive:false });
 pwWrap.addEventListener('contextmenu', e => e.preventDefault());
 
+/* ── 加塞球交互：拖红点设置击球点 ── */
+let spinDragging = false;
+const spinWrapEl = document.getElementById('spinWrap');
+
+function spinFromEvent(e){
+  const t = e.touches ? e.touches[0] : e;
+  const r = sb.getBoundingClientRect();
+  const cx = r.left + r.width/2, cy = r.top + r.height/2;
+  const R = Math.min(r.width, r.height)/2 - 1;
+  let ux =  (t.clientX - cx) / (R * 0.72);
+  let uy = -(t.clientY - cy) / (R * 0.72);
+  const m = Math.hypot(ux, uy);
+  if(m > 1){ ux /= m; uy /= m; }
+  // 拖回中心附近 = 无塞
+  spinX = Math.abs(ux) < 0.10 ? 0 : ux;
+  spinY = Math.abs(uy) < 0.10 ? 0 : uy;
+  drawSpinBall();
+}
+
+function onSpinDown(e){
+  if(shooting || gameOver) return;
+  if(e.cancelable) e.preventDefault();
+  spinDragging = true;
+  spinWrapEl.classList.add('active');
+  spinFromEvent(e);
+}
+function onSpinMove(e){
+  if(!spinDragging) return;
+  if(e.cancelable) e.preventDefault();
+  spinFromEvent(e);
+}
+function onSpinUp(){
+  if(!spinDragging) return;
+  spinDragging = false;
+  spinWrapEl.classList.remove('active');
+}
+
+spinWrapEl.addEventListener('pointerdown', onSpinDown);
+spinWrapEl.addEventListener('pointermove', onSpinMove);
+spinWrapEl.addEventListener('pointerup',   onSpinUp);
+spinWrapEl.addEventListener('pointercancel', onSpinUp);
+spinWrapEl.addEventListener('pointerleave',  onSpinUp);
+spinWrapEl.addEventListener('touchstart', e => { e.preventDefault(); onSpinDown(e); }, { passive:false });
+spinWrapEl.addEventListener('touchmove',  e => { e.preventDefault(); onSpinMove(e); }, { passive:false });
+spinWrapEl.addEventListener('touchend',   e => { e.preventDefault(); onSpinUp(e); },   { passive:false });
+spinWrapEl.addEventListener('contextmenu', e => e.preventDefault());
+
+/* 竖屏提示的「仍然继续」 */
+document.getElementById('rotateSkip').onclick = () => {
+  portraitDismissed = true;
+  document.getElementById('rotateTip').classList.remove('show');
+};
+
 document.getElementById('btnRules').onclick   = showRules;
 document.getElementById('btnRestart').onclick = newGame;
 
@@ -1528,6 +1742,16 @@ window.__G = {
   get elapsed(){ return elapsed; },
   get cueBall(){ return cueBall(); },
   get left(){ return remainingBalls().length; },
+  get cx(){ return CX; },
+  get cy(){ return CY; },
+  get spinX(){ return spinX; },
+  get spinY(){ return spinY; },
+  get firstHit(){ return shotLog ? shotLog.firstHit : null; },
+  get lastPotted(){ return shotLog ? shotLog.potted.slice() : null; },
+  get lastCuePotted(){ return shotLog ? shotLog.cuePotted : null; },
+  get cbV(){ const c = cueBall(); return c ? { vx:+c.vx.toFixed(3), vz:+c.vz.toFixed(3), x:+c.x.toFixed(3), z:+c.z.toFixed(3) } : null; },
+  setSpin(x, y){ spinX = x; spinY = y; drawSpinBall(); },
+  setPower(v){ power = Math.max(0, Math.min(1, v)); drawPowerBar(); },
   remainingOf, groupOf, pickShot, predictShot, screenToWorld, worldToScreen,
   nextTargetBall, newGame,
   _kill(n){ const b = ballByN(n); if(b) b.alive = false; updateHUD(); },
@@ -1536,7 +1760,8 @@ window.__G = {
   _shoot(vx, vz){
     const cb = cueBall(); if(!cb) return;
     cb.vx = vx; cb.vz = vz; shooting = true; shots++;
-    shotLog = { firstHit:null, potted:[], cuePotted:false };
+    shotLog = { firstHit:null, potted:[], cuePotted:false,
+                spinY: spinY, sideX: spinX, spinDone:false };
     shotStartT = performance.now();
   },
   _setAim(dx, dz, p){
