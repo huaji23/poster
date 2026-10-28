@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>3D 台球</title>
+<title>中八</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;
   -webkit-user-select:none;user-select:none}
@@ -75,7 +75,9 @@ canvas{display:block}
 #win .t{font-size:22px;font-weight:800;letter-spacing:4px;margin-bottom:8px;
   background:linear-gradient(135deg,#7ee8a2,#2fa860);-webkit-background-clip:text;
   -webkit-text-fill-color:transparent}
-#win .s{font-size:13px;color:#7a8a96;margin-bottom:26px;text-align:center;line-height:1.7}
+#win .s{font-size:13px;color:#7a8a96;margin-bottom:26px;text-align:center;line-height:1.7;
+  max-width:min(360px, 88vw);max-height:66vh;overflow-y:auto;padding:0 14px;box-sizing:border-box;
+  -webkit-overflow-scrolling:touch}
 #win button{border:none;border-radius:22px;padding:13px 32px;font-size:14px;font-weight:700;
   cursor:pointer;font-family:inherit;background:linear-gradient(135deg,#7ee8a2,#2fa860);
   color:#04150b}
@@ -138,6 +140,7 @@ canvas{display:block}
 <div class="msg show" id="msg">① 按住白球　② 往后拖　③ 松手击球</div>
 
 <div class="bar">
+  <button id="rulesBtn">规则</button>
   <button id="resetBtn">重新摆球</button>
 </div>
 
@@ -529,7 +532,9 @@ function fitCamera(){
     const dH = (needW/2) / (tanH * aspect);
     const dV = (needD/2) / tanH;
     const d = Math.max(dH, dV);
-    camera.position.set(d*0.90, d*0.66, 0.02);
+    // ⚠️ 站在白球这一侧（-x）往球堆看，才是球员的真实视角；
+    //    站在 +x 会变成「从球堆往回看白球」，开球时白球在远端、视线别扭
+    camera.position.set(-d*0.90, d*0.66, 0.02);
     camera.lookAt(0, 0, 0);
   } else {
     /* ── 横屏（电脑/平板）：常规俯视 ── */
@@ -1277,6 +1282,40 @@ function bindEvents(){
 
   document.getElementById('resetBtn').onclick = ()=> newGame();
   document.getElementById('winBtn').onclick = ()=> newGame();
+  document.getElementById('rulesBtn').onclick = ()=> showRules();
+}
+
+/* 规则说明 —— 中八不是人人都会，第一次打开必须能查 */
+function showRules(){
+  const btn = document.getElementById('winBtn');
+  document.getElementById('winIc').textContent = '📖';
+  document.getElementById('winT').textContent  = '中 八 规 则';
+  document.getElementById('winSub').innerHTML = `
+    <div style="text-align:left;line-height:1.85;font-size:12.5px">
+      <b style="color:#7ee8a2">1. 球</b><br>
+      16 颗：白球 + 1~7 全色 + 8 号黑球 + 9~15 花色。<br><br>
+      <b style="color:#7ee8a2">2. 定组</b><br>
+      第一杆合法落袋的球决定你的组：进了全色你打 1~7，对手打 9~15（反之亦然）。<br><br>
+      <b style="color:#7ee8a2">3. 继续还是换人</b><br>
+      打进自己的球就继续打；没进就换对手。<br><br>
+      <b style="color:#7ee8a2">4. 怎么赢</b><br>
+      先把本组 7 颗全部打进，最后再打进黑八 → 获胜。黑八提前落袋直接输。<br><br>
+      <b style="color:#e8766b">5. 犯规（对手拿自由球，可任意摆放白球）</b><br>
+      · 白球落袋<br>
+      · 空杆，白球没碰到任何球<br>
+      · 第一颗碰到的不是自己组的球<br>
+      · 该打黑八了却先碰别的球<br><br>
+      <b style="color:#ffcc4d">6. 操作</b><br>
+      按住白球往后拖，拖得越远力越大，松手击球。<br>
+      拿到自由球时，直接拖桌面任意位置就能挪白球。
+    </div>`;
+  btn.textContent = '知道了';
+  btn.onclick = ()=>{
+    document.getElementById('win').classList.remove('show');
+    btn.textContent = '再来一局';
+    btn.onclick = ()=> newGame();
+  };
+  document.getElementById('win').classList.add('show');
 }
 
 function newGame(){
@@ -1327,6 +1366,13 @@ window.__G = {
   _kill(n){ const b = balls.find(b => b.n === n); if(b) b.alive = false; },
   _resolve(log){ resolveShot(log); },
   _stopAll(){ balls.forEach(b => { b.vx = 0; b.vz = 0; }); },
+  // 世界坐标 → 屏幕坐标，用来判断「球堆在屏幕哪个方向」
+  _proj(x, z){
+    const r = renderer.domElement.getBoundingClientRect();
+    const v = new THREE.Vector3(x, BALL_R*S, z).project(camera);
+    return { x: +(r.left + (v.x*0.5+0.5)*r.width).toFixed(1),
+             y: +(r.top  + (-v.y*0.5+0.5)*r.height).toFixed(1) };
+  },
 };
 
 initScene();
