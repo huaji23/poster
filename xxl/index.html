@@ -1,0 +1,921 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#12102a">
+<title>消消乐</title>
+<style>
+  :root{
+    --bg:#12102a;
+    --bg2:#1b1740;
+    --panel:#251f4d;
+    --line:#3a3272;
+    --txt:#eae7ff;
+    --dim:#8b85bd;
+    --gold:#ffcc4d;
+    --rose:#ff6b9d;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  html,body{
+    height:100%;
+    overflow:clip;
+    overscroll-behavior:none;
+    background:
+      radial-gradient(1100px 700px at 50% -10%, #2a2358 0%, transparent 60%),
+      radial-gradient(800px 600px at 90% 110%, #2b1f45 0%, transparent 60%),
+      var(--bg);
+    color:var(--txt);
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Noto Sans CJK SC",system-ui,sans-serif;
+    user-select:none;
+    touch-action:manipulation;
+  }
+  #app{
+    height:100%;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    padding:10px 10px 12px;
+    gap:8px;
+    max-width:460px;
+    margin:0 auto;
+  }
+
+  /* ── 顶栏 ── */
+  #hud{width:100%;display:flex;align-items:center;gap:8px;flex:0 0 auto}
+  .stat{
+    flex:1;
+    background:linear-gradient(180deg,rgba(255,255,255,.07),rgba(255,255,255,.02));
+    border:1px solid var(--line);
+    border-radius:13px;
+    padding:7px 10px;
+    min-width:0;
+  }
+  .stat .k{font-size:10.5px;color:var(--dim);letter-spacing:.06em;line-height:1.2}
+  .stat .v{font-size:19px;font-weight:800;line-height:1.25;font-variant-numeric:tabular-nums}
+  #scoreV{color:var(--gold)}
+  #goalV{color:var(--rose)}
+
+  /* 目标进度条 */
+  #progWrap{
+    width:100%;height:6px;border-radius:3px;background:rgba(255,255,255,.08);
+    overflow:hidden;flex:0 0 auto;position:relative;
+  }
+  #prog{
+    height:100%;width:0%;border-radius:3px;
+    background:linear-gradient(90deg,#ffcc4d,#ff6b9d);
+    transition:width .32s cubic-bezier(.2,.9,.25,1);
+  }
+
+  /* ── 棋盘 ── */
+  #boardWrap{
+    flex:1 1 auto;
+    width:100%;
+    min-height:0;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    position:relative;
+  }
+  #board{
+    position:relative;
+    background:linear-gradient(180deg,rgba(255,255,255,.045),rgba(255,255,255,.012));
+    border:1px solid var(--line);
+    border-radius:18px;
+    box-shadow:0 18px 50px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.06);
+    touch-action:none;
+    overflow:hidden;
+  }
+  #board.grid-bg::before{
+    content:"";position:absolute;inset:0;pointer-events:none;
+    background-image:
+      linear-gradient(to right, rgba(255,255,255,.045) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(255,255,255,.045) 1px, transparent 1px);
+    background-size:var(--cell) var(--cell);
+  }
+
+  .tile{
+    position:absolute;
+    left:0;top:0;
+    display:flex;align-items:center;justify-content:center;
+    will-change:transform;
+    transition:transform .19s cubic-bezier(.25,.85,.3,1);
+    cursor:pointer;
+    -webkit-user-drag:none;
+  }
+  .tile .face{
+    width:82%;height:82%;
+    border-radius:26%;
+    display:flex;align-items:center;justify-content:center;
+    font-size:calc(var(--cell) * .50);
+    line-height:1;
+    box-shadow:
+      inset 0 2px 0 rgba(255,255,255,.34),
+      inset 0 -3px 6px rgba(0,0,0,.30),
+      0 3px 8px rgba(0,0,0,.32);
+    transition:transform .16s ease, box-shadow .16s ease, opacity .16s ease;
+    transform:scale(1);
+  }
+  .tile.sel .face{
+    transform:scale(1.14);
+    box-shadow:0 0 0 3px var(--gold), inset 0 2px 0 rgba(255,255,255,.45), 0 0 22px rgba(255,204,77,.65);
+  }
+  .tile.hint .face{animation:hintPulse .78s ease-in-out infinite}
+  @keyframes hintPulse{
+    0%,100%{transform:scale(1)}
+    50%{transform:scale(1.16)}
+  }
+  .tile.pop .face{
+    transform:scale(.2) rotate(24deg);
+    opacity:0;
+  }
+
+  /* ── 底部按钮 ── */
+  #bar{width:100%;display:flex;gap:8px;flex:0 0 auto}
+  #bar button{
+    flex:1 0 auto;
+    padding:11px 6px;
+    border-radius:13px;
+    border:1px solid var(--line);
+    background:linear-gradient(180deg,rgba(255,255,255,.10),rgba(255,255,255,.03));
+    color:var(--txt);
+    font-size:13.5px;
+    font-weight:700;
+    font-family:inherit;
+    cursor:pointer;
+    transition:transform .1s, background-color .18s, border-color .18s;
+  }
+  #bar button:active{transform:scale(.965)}
+  #bar button:focus-visible{outline:2px solid var(--gold);outline-offset:3px}
+  #bar button:disabled{opacity:.34;cursor:default}
+  #bar button small{display:block;font-size:10px;font-weight:600;color:var(--dim);margin-top:1px}
+
+  /* ── 飘字 ── */
+  .float{
+    position:absolute;
+    font-size:15px;font-weight:900;
+    color:var(--gold);
+    text-shadow:0 2px 10px rgba(0,0,0,.7);
+    pointer-events:none;
+    animation:floatUp .78s ease-out forwards;
+    z-index:60;
+    white-space:nowrap;
+  }
+  @keyframes floatUp{
+    0%{transform:translate(-50%,0) scale(.6);opacity:0}
+    22%{transform:translate(-50%,-14px) scale(1.15);opacity:1}
+    100%{transform:translate(-50%,-62px) scale(.92);opacity:0}
+  }
+
+  /* ── 弹层 ── */
+  #modal{
+    position:fixed;inset:0;
+    display:none;
+    align-items:center;justify-content:center;
+    background:rgba(8,6,22,.80);
+    backdrop-filter:blur(7px);
+    -webkit-backdrop-filter:blur(7px);
+    z-index:200;
+    padding:18px;
+  }
+  #modal.show{display:flex;animation:fadeIn .22s ease}
+  @keyframes fadeIn{from{opacity:0}to{opacity:1}}
+  #card{
+    width:100%;max-width:330px;
+    background:linear-gradient(180deg,#2a2358,#1d1840);
+    border:1px solid var(--line);
+    border-radius:20px;
+    padding:24px 20px 20px;
+    text-align:center;
+    box-shadow:0 26px 70px rgba(0,0,0,.65);
+    animation:popIn .28s cubic-bezier(.2,1.15,.35,1);
+  }
+  @keyframes popIn{from{transform:scale(.86);opacity:0}to{transform:scale(1);opacity:1}}
+  #card h2{font-size:25px;font-weight:900;margin-bottom:6px;letter-spacing:.02em}
+  #card .sub{font-size:13px;color:var(--dim);line-height:1.6;margin-bottom:18px}
+  #card .big{
+    font-size:44px;font-weight:900;color:var(--gold);
+    font-variant-numeric:tabular-nums;line-height:1.1;margin:8px 0 4px;
+  }
+  #card .rank{
+    font-size:15px;font-weight:800;color:var(--rose);margin-bottom:16px;
+  }
+  /* 弹层按钮必须显式取消 flex，否则会被全局 #bar button 的样式撑变形 */
+  #card button{
+    flex:0 0 auto;
+    width:100%;
+    padding:13px;
+    border-radius:14px;
+    border:none;
+    background:linear-gradient(180deg,#ffd76b,#f2a93b);
+    color:#2a1d00;
+    font-size:15.5px;
+    font-weight:900;
+    font-family:inherit;
+    cursor:pointer;
+    margin-top:9px;
+    transition:transform .1s;
+  }
+  #card button:active{transform:scale(.97)}
+  #card button:focus-visible{outline:3px solid #fff;outline-offset:3px}
+  #card button.ghost{
+    background:transparent;
+    color:var(--dim);
+    border:1px solid var(--line);
+    font-weight:700;
+    font-size:13.5px;
+    padding:10px;
+  }
+  #card button:disabled{opacity:.4;cursor:default}
+
+  /* ── 开局提示 ── */
+  #tip{
+    position:fixed;left:50%;bottom:14px;transform:translateX(-50%);
+    background:rgba(0,0,0,.72);
+    border:1px solid var(--line);
+    border-radius:12px;
+    padding:9px 16px;
+    font-size:12.5px;
+    color:var(--txt);
+    opacity:0;
+    transition:opacity .25s;
+    pointer-events:none;
+    z-index:150;
+    white-space:nowrap;
+  }
+  #tip.show{opacity:1}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="hud">
+    <div class="stat"><div class="k">得分</div><div class="v" id="scoreV">0</div></div>
+    <div class="stat"><div class="k">目标</div><div class="v" id="goalV">0</div></div>
+    <div class="stat"><div class="k">步数</div><div class="v" id="movesV">0</div></div>
+  </div>
+
+  <div id="progWrap"><div id="prog"></div></div>
+
+  <div id="boardWrap">
+    <div id="board" class="grid-bg"></div>
+  </div>
+
+  <div id="bar">
+    <button id="btnHint">提示</button>
+    <button id="btnShuffle">洗牌 <small id="shuffleN">3</small></button>
+    <button id="btnRestart">重来</button>
+  </div>
+</div>
+
+<div id="modal"><div id="card"></div></div>
+<div id="tip"></div>
+
+<script>
+(() => {
+'use strict';
+
+// ═══════════════════════════════════════════════════════════
+//  常量
+// ═══════════════════════════════════════════════════════════
+const ROWS = 10;
+const COLS = 8;
+const KINDS = 6;            // 6 种，太多凑不出、太少一眼消
+const START_MOVES = 26;     // 步数上限（初始，实际以 MOVES_LIMIT 为准）
+const MOVES_LIMIT = 24;     // 一局的总步数
+let GOAL = 3000;            // 目标分（实测机器人 24 步中位数 2964，卡在这里最紧张）
+const BASE_SCORE = 30;      // 每消一颗的基础分
+const MAX_SHUFFLE = 3;
+
+// 6 种元素：形状 + 底色 + 高光，色相差拉开，色弱也能靠明度分辨
+const KINDS_DEF = [
+  { emoji:'🍎', bg:'linear-gradient(160deg,#ff8a8a,#e23434)', name:'红' },
+  { emoji:'🍊', bg:'linear-gradient(160deg,#ffc46b,#f08519)', name:'橙' },
+  { emoji:'🍋', bg:'linear-gradient(160deg,#ffe97a,#e8c520)', name:'黄' },
+  { emoji:'🫐', bg:'linear-gradient(160deg,#8fb8ff,#3a63d8)', name:'蓝' },
+  { emoji:'🍇', bg:'linear-gradient(160deg,#c99cff,#7a3fd4)', name:'紫' },
+  { emoji:'🥝', bg:'linear-gradient(160deg,#9be08a,#3f9b34)', name:'绿' },
+];
+
+// ═══════════════════════════════════════════════════════════
+//  DOM
+// ═══════════════════════════════════════════════════════════
+const $ = id => document.getElementById(id);
+const boardEl = $('board');
+const scoreEl = $('scoreV');
+const goalEl  = $('goalV');
+const movesEl = $('movesV');
+const progEl  = $('prog');
+const shuffleNEl = $('shuffleN');
+const modalEl = $('modal');
+const cardEl  = $('card');
+const tipEl   = $('tip');
+
+// ═══════════════════════════════════════════════════════════
+//  状态
+// ═══════════════════════════════════════════════════════════
+let CELL = 44;              // 单格边长（CSS 像素）
+let tiles = [];             // [{id,type,r,c,el}]
+let grid = [];              // grid[r][c] = tile | null
+let uid = 0;
+let score = 0;
+let moves = 0;
+let shuffles = MAX_SHUFFLE;
+let busy = false;           // 动画/结算期间禁止输入
+let over = false;
+let sel = null;             // 当前选中的 tile
+let idleTimer = 0;
+let hintTiles = [];
+
+// ═══════════════════════════════════════════════════════════
+//  布局：量真实可用高度，不写死常量
+// ═══════════════════════════════════════════════════════════
+function layout() {
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const maxBoardW = Math.min(vw - 20, 440);
+
+  // 先按一个基准测量除棋盘外所有兄弟元素
+  const others = [];
+  document.querySelectorAll('#hud,#progWrap,#bar').forEach(el => {
+    const cs = getComputedStyle(el);
+    others.push({
+      el,
+      h: el.offsetHeight,
+      mt: parseFloat(cs.marginTop) || 0,
+      mb: parseFloat(cs.marginBottom) || 0,
+    });
+  });
+  const appCs = getComputedStyle($('app'));
+  const padV = (parseFloat(appCs.paddingTop) || 0) + (parseFloat(appCs.paddingBottom) || 0);
+  const gapTotal = (parseFloat(appCs.rowGap) || 8) * 3;   // #app 有 4 个 flex 子项 → 3 个间隙
+
+  const used = others.reduce((a, o) => a + o.h + o.mt + o.mb, 0) + padV + gapTotal + 10;
+
+  const availH = Math.max(180, vh - used);
+  const availW = maxBoardW;
+
+  // 棋盘未必是方形（8 列 × 10 行），宽高分别算再取小的那个
+  const cellW = Math.floor(availW / COLS);
+  const cellH = Math.floor(availH / ROWS);
+  CELL = Math.max(18, Math.min(cellW, cellH));
+
+  const bw = CELL * COLS;
+  const bh = CELL * ROWS;
+  boardEl.style.width  = bw + 'px';
+  boardEl.style.height = bh + 'px';
+  boardEl.style.setProperty('--cell', CELL + 'px');
+
+  // 重排所有 tile
+  tiles.forEach(t => place(t, true));
+}
+
+function place(t, instant) {
+  if (instant) {
+    t.el.style.transition = 'none';
+    // 强制回流后再恢复，否则 transition:none 会粘住
+    void t.el.offsetWidth;
+    t.el.style.transition = '';
+  }
+  t.el.style.width  = CELL + 'px';
+  t.el.style.height = CELL + 'px';
+  t.el.style.transform = `translate(${t.c * CELL}px, ${t.r * CELL}px)`;
+}
+
+// ═══════════════════════════════════════════════════════════
+//  生成
+// ═══════════════════════════════════════════════════════════
+function randType() {
+  return Math.floor(Math.random() * KINDS);
+}
+
+function makeTile(type, r, c) {
+  const el = document.createElement('div');
+  el.className = 'tile';
+  const face = document.createElement('div');
+  face.className = 'face';
+  const def = KINDS_DEF[type];
+  face.style.background = def.bg;
+  face.textContent = def.emoji;
+  el.appendChild(face);
+  boardEl.appendChild(el);
+  const t = { id: ++uid, type, r, c, el, face };
+  place(t, true);
+  return t;
+}
+
+function resetBoard() {
+  boardEl.querySelectorAll('.tile').forEach(e => e.remove());
+  tiles = [];
+  grid = Array.from({ length: ROWS }, () => Array(COLS).fill(null));
+  uid = 0;
+
+  // 先随机填，填完立刻消掉初始三连（避免开局自带消除）
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      let type;
+      let guard = 0;
+      do {
+        type = randType();
+        guard++;
+      } while (guard < 40 && createsMatchAt(r, c, type));
+      const t = makeTile(type, r, c);
+      tiles.push(t);
+      grid[r][c] = t;
+    }
+  }
+
+  // 保证开局有得消
+  if (!hasValidMove()) {
+    resetBoard();
+    return;
+  }
+  layout();
+}
+
+// 在 (r,c) 放 type 会不会跟左边/上边形成三连（用于生成阶段）
+function createsMatchAt(r, c, type) {
+  if (c >= 2 && grid[r][c-1] && grid[r][c-2] &&
+      grid[r][c-1].type === type && grid[r][c-2].type === type) return true;
+  if (r >= 2 && grid[r-1] && grid[r-1][c] && grid[r-2] && grid[r-2][c] &&
+      grid[r-1][c].type === type && grid[r-2][c].type === type) return true;
+  return false;
+}
+
+// ═══════════════════════════════════════════════════════════
+//  连线检测
+// ═══════════════════════════════════════════════════════════
+/** 返回所有处于 3+ 连线上的 tile 数组（已去重） */
+function findMatches() {
+  const hit = new Set();
+
+  // 横向
+  for (let r = 0; r < ROWS; r++) {
+    let run = 1;
+    for (let c = 1; c <= COLS; c++) {
+      const same = c < COLS && grid[r][c] && grid[r][c-1] && grid[r][c].type === grid[r][c-1].type;
+      if (same) { run++; }
+      else {
+        if (run >= 3) for (let k = c - run; k < c; k++) hit.add(grid[r][k].id);
+        run = 1;
+      }
+    }
+  }
+  // 纵向
+  for (let c = 0; c < COLS; c++) {
+    let run = 1;
+    for (let r = 1; r <= ROWS; r++) {
+      const same = r < ROWS && grid[r][c] && grid[r-1][c] && grid[r][c].type === grid[r-1][c].type;
+      if (same) { run++; }
+      else {
+        if (run >= 3) for (let k = r - run; k < r; k++) hit.add(grid[k][c].id);
+        run = 1;
+      }
+    }
+  }
+
+  const out = [];
+  tiles.forEach(t => { if (hit.has(t.id)) out.push(t); });
+  return out;
+}
+
+/** 试算：交换 a,b 之后能不能消（不改真实状态） */
+function swapMakesMatch(a, b) {
+  const at = a.type, bt = b.type;
+  a.type = bt; b.type = at;              // 只换 type，不动位置
+  const ok = findMatches().length > 0;
+  a.type = at; b.type = bt;
+  return ok;
+}
+
+/** 是否存在任何一步合法交换 */
+function hasValidMove() {
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const a = grid[r][c];
+      if (!a) continue;
+      if (c + 1 < COLS && grid[r][c+1] && swapMakesMatch(a, grid[r][c+1])) return true;
+      if (r + 1 < ROWS && grid[r+1][c] && swapMakesMatch(a, grid[r+1][c])) return true;
+    }
+  }
+  return false;
+}
+
+/** 找出所有可消的一对，给提示用 */
+function findAnyMove() {
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const a = grid[r][c];
+      if (!a) continue;
+      if (c + 1 < COLS && grid[r][c+1] && swapMakesMatch(a, grid[r][c+1])) return [a, grid[r][c+1]];
+      if (r + 1 < ROWS && grid[r+1][c] && swapMakesMatch(a, grid[r+1][c])) return [a, grid[r+1][c]];
+    }
+  }
+  return null;
+}
+
+// ═══════════════════════════════════════════════════════════
+//  消除 / 下落 / 补充
+// ═══════════════════════════════════════════════════════════
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+function popOut(list) {
+  list.forEach(t => {
+    t.el.classList.add('pop');
+    grid[t.r][t.c] = null;
+  });
+}
+
+async function collapseAll() {
+  // 移除已经 pop 的 tile 对象
+  const alive = tiles.filter(t => !t.el.classList.contains('pop'));
+  const removed = tiles.filter(t => t.el.classList.contains('pop'));
+  removed.forEach(t => setTimeout(() => t.el.remove(), 220));
+  tiles = alive;
+
+  // 逐列下落
+  for (let c = 0; c < COLS; c++) {
+    let writeRow = ROWS - 1;
+    for (let r = ROWS - 1; r >= 0; r--) {
+      const t = grid[r][c];
+      if (!t) continue;
+      if (r !== writeRow) {
+        grid[writeRow][c] = t;
+        grid[r][c] = null;
+        t.r = writeRow;
+        place(t);
+      }
+      writeRow--;
+    }
+    // 顶部补新块：先放在负行，再落下
+    let above = -1;
+    for (let r = writeRow; r >= 0; r--) {
+      const t = makeTile(randType(), above, c);
+      // 直接定位到上方（看不见）
+      t.r = above;
+      place(t, true);
+      grid[r][c] = t;
+      tiles.push(t);
+      above--;
+      // 触发落下
+      requestAnimationFrame(() => { t.r = r; place(t); });
+    }
+  }
+  await sleep(210);
+}
+
+async function resolveCascades() {
+  let combo = 0;
+  while (true) {
+    const m = findMatches();
+    if (!m.length) break;
+    combo++;
+
+    // 计分：基础分 × 连击倍率，一次消 4 个以上额外加成
+    const mult = 1 + (combo - 1) * 0.6;
+    const sizeBonus = m.length >= 5 ? 1.6 : m.length === 4 ? 1.25 : 1;
+    const gain = Math.round(BASE_SCORE * m.length * mult * sizeBonus);
+    score += gain;
+
+    // 飘字定位到这次消除的中心
+    let cx = 0, cy = 0;
+    m.forEach(t => { cx += t.c; cy += t.r; });
+    cx /= m.length; cy /= m.length;
+    floatText(`+${gain}${combo > 1 ? ' ×' + combo : ''}`, cx, cy, combo);
+
+    popOut(m);
+    await sleep(200);
+    await collapseAll();
+    updateHUD();
+  }
+  return combo;
+}
+
+function floatText(txt, c, r, combo) {
+  const el = document.createElement('div');
+  el.className = 'float';
+  el.textContent = txt;
+  if (combo >= 3) el.style.color = '#ff6b9d';
+  else if (combo === 2) el.style.color = '#ffd76b';
+  const wrapRect = boardEl.getBoundingClientRect();
+  // 用相对棋盘的百分比定位（float 的父级是 body，需换算屏幕坐标）
+  el.style.left = (wrapRect.left + (c + 0.5) * CELL) + 'px';
+  el.style.top  = (wrapRect.top  + (r + 0.5) * CELL) + 'px';
+  el.style.position = 'fixed';
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 800);
+}
+
+// ═══════════════════════════════════════════════════════════
+//  交互
+// ═══════════════════════════════════════════════════════════
+function clearSel() {
+  if (sel) { sel.el.classList.remove('sel'); sel = null; }
+}
+function clearHint() {
+  hintTiles.forEach(t => t.el.classList.remove('hint'));
+  hintTiles = [];
+}
+
+function tileAt(r, c) {
+  if (r < 0 || r >= ROWS || c < 0 || c >= COLS) return null;
+  return grid[r][c];
+}
+
+function hitTest(ev) {
+  // 用棋盘坐标反解行列，比逐个元素命中更稳（tile 有动画位移时 elementFromPoint 会飘）
+  const rect = boardEl.getBoundingClientRect();
+  const x = (ev.clientX ?? ev.touches?.[0]?.clientX) - rect.left;
+  const y = (ev.clientY ?? ev.touches?.[0]?.clientY) - rect.top;
+  if (x < 0 || y < 0 || x >= COLS * CELL || y >= ROWS * CELL) return null;
+  const c = Math.floor(x / CELL);
+  const r = Math.floor(y / CELL);
+  return tileAt(r, c);
+}
+
+async function tap(t) {
+  if (busy || over || !t) return;
+  clearHint();
+
+  if (!sel) {
+    sel = t;
+    t.el.classList.add('sel');
+    return;
+  }
+  if (sel === t) { clearSel(); return; }
+
+  const dr = Math.abs(sel.r - t.r);
+  const dc = Math.abs(sel.c - t.c);
+  const adjacent = (dr + dc) === 1;
+
+  if (!adjacent) {
+    // 不相邻：改成选中新的，符合玩家直觉
+    clearSel();
+    sel = t;
+    t.el.classList.add('sel');
+    return;
+  }
+
+  const a = sel, b = t;
+  clearSel();
+  await doSwap(a, b);
+}
+
+async function doSwap(a, b) {
+  busy = true;
+  clearHint();
+
+  // 交换位置 —— 位置交换本身就是这次 swap，type 跟着 tile 一起走，不能再单独换 type
+  const ar = a.r, ac = a.c, br = b.r, bc = b.c;
+  grid[ar][ac] = b; grid[br][bc] = a;
+  a.r = br; a.c = bc;
+  b.r = ar; b.c = ac;
+  place(a); place(b);
+  await sleep(190);
+
+  const m = findMatches();
+  if (!m.length) {
+    // 换回来
+    grid[ar][ac] = a; grid[br][bc] = b;
+    a.r = ar; a.c = ac;
+    b.r = br; b.c = bc;
+    place(a); place(b);
+    await sleep(190);
+    toast('这一步消不掉');
+    busy = false;
+    return;
+  }
+
+  // 扣步数
+  moves--;
+  updateHUD();
+
+  await resolveCascades();
+  await afterMove();
+  busy = false;
+  resetIdle();
+}
+
+async function afterMove() {
+  if (score >= GOAL) { win(); return; }
+  if (moves <= 0) { lose(); return; }
+
+  if (!hasValidMove()) {
+    await sleep(180);
+    toast('没得消了，自动洗牌');
+    await shuffleBoard();
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  洗牌
+// ═══════════════════════════════════════════════════════════
+async function shuffleBoard() {
+  busy = true;
+  clearSel(); clearHint();
+
+  let tries = 0;
+  do {
+    // 收集现有 type，打乱，重新分配
+    const types = tiles.map(t => t.type);
+    for (let i = types.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [types[i], types[j]] = [types[j], types[i]];
+    }
+    tiles.forEach((t, i) => {
+      t.type = types[i];
+      t.face.style.background = KINDS_DEF[t.type].bg;
+      t.face.textContent = KINDS_DEF[t.type].emoji;
+    });
+    tries++;
+  } while (tries < 60 && (findMatches().length > 0 || !hasValidMove()));
+
+  await sleep(220);
+  busy = false;
+  resetIdle();
+}
+
+// ═══════════════════════════════════════════════════════════
+//  HUD / 弹层 / 提示
+// ═══════════════════════════════════════════════════════════
+function updateHUD() {
+  scoreEl.textContent = score;
+  goalEl.textContent = GOAL;
+  movesEl.textContent = Math.max(0, moves);
+  shuffleNEl.textContent = shuffles;
+  const pct = Math.min(100, (score / GOAL) * 100);
+  progEl.style.width = pct + '%';
+  $('btnShuffle').disabled = shuffles <= 0 || busy || over;
+}
+
+let tipTimer = 0;
+function toast(msg) {
+  tipEl.textContent = msg;
+  tipEl.classList.add('show');
+  clearTimeout(tipTimer);
+  tipTimer = setTimeout(() => tipEl.classList.remove('show'), 1500);
+}
+
+function resetIdle() {
+  clearTimeout(idleTimer);
+  if (over) return;
+  idleTimer = setTimeout(() => {
+    if (busy || over) return;
+    const mv = findAnyMove();
+    if (mv) {
+      hintTiles = mv;
+      mv.forEach(t => t.el.classList.add('hint'));
+      setTimeout(clearHint, 2400);
+    }
+  }, 5200);
+}
+
+function rankOf() {
+  if (score >= GOAL * 2) return { t:'消消乐之神', s:'这分数有点不讲道理' };
+  if (score >= GOAL * 1.5) return { t:'眼力惊人', s:'一眼就能看出该往哪换' };
+  if (score >= GOAL * 1.2) return { t:'手比脑子快', s:'基本靠直觉，而且直觉是对的' };
+  if (score >= GOAL) return { t:'稳稳过关', s:'不急不躁，该消的都消了' };
+  return { t:'差一点点', s:'再来一把就过了' };
+}
+
+function win() {
+  over = true;
+  const r = rankOf();
+  cardEl.innerHTML = `
+    <h2>🎉 过关</h2>
+    <div class="sub">${r.s}</div>
+    <div class="big">${score}</div>
+    <div class="rank">${r.t}</div>
+    <button id="again">再来一把</button>
+    <button class="ghost" id="close1">看看棋盘</button>
+  `;
+  modalEl.classList.add('show');
+  $('again').onclick = () => { modalEl.classList.remove('show'); newGame(); };
+  $('close1').onclick = () => modalEl.classList.remove('show');
+}
+
+function lose() {
+  over = true;
+  const gap = Math.max(0, GOAL - score);
+  const pct = Math.round((score / GOAL) * 100);
+  cardEl.innerHTML = `
+    <h2>步数用完了</h2>
+    <div class="sub">${pct >= 85 ? `就差 ${gap} 分，再来一把肯定过` : `你拿到了 ${pct}% 的目标分`}</div>
+    <div class="big">${score}</div>
+    <div class="rank">还差 ${gap} 分</div>
+    <button id="again">再来一把</button>
+    <button class="ghost" id="close2">看看棋盘</button>
+  `;
+  modalEl.classList.add('show');
+  $('again').onclick = () => { modalEl.classList.remove('show'); newGame(); };
+  $('close2').onclick = () => modalEl.classList.remove('show');
+}
+
+// ═══════════════════════════════════════════════════════════
+//  开局
+// ═══════════════════════════════════════════════════════════
+function newGame() {
+  score = 0;
+  moves = MOVES_LIMIT;
+  shuffles = MAX_SHUFFLE;
+  busy = false;
+  over = false;
+  clearSel(); clearHint();
+  modalEl.classList.remove('show');
+  resetBoard();
+  updateHUD();
+  resetIdle();
+}
+
+// ═══════════════════════════════════════════════════════════
+//  事件
+// ═══════════════════════════════════════════════════════════
+let downTile = null;
+let downX = 0, downY = 0;
+
+boardEl.addEventListener('pointerdown', e => {
+  if (busy || over) return;
+  e.preventDefault();
+  downTile = hitTest(e);
+  downX = e.clientX; downY = e.clientY;
+}, { passive: false });
+
+boardEl.addEventListener('pointerup', e => {
+  if (busy || over) return;
+  const up = hitTest(e);
+  const dx = e.clientX - downX;
+  const dy = e.clientY - downY;
+  const dist = Math.hypot(dx, dy);
+
+  // 拖动式交换：位移超过 40% 格宽，按方向换
+  if (downTile && dist > CELL * 0.4) {
+    let tr = downTile.r, tc = downTile.c;
+    if (Math.abs(dx) > Math.abs(dy)) tc += dx > 0 ? 1 : -1;
+    else tr += dy > 0 ? 1 : -1;
+    const target = tileAt(tr, tc);
+    if (target) { clearSel(); doSwap(downTile, target); }
+    else clearSel();
+    downTile = null;
+    return;
+  }
+
+  // 点击式交换
+  if (up) tap(up);
+  else clearSel();
+  downTile = null;
+}, { passive: true });
+
+// 阻止移动端长按菜单 / 拖拽
+boardEl.addEventListener('contextmenu', e => e.preventDefault());
+boardEl.addEventListener('dragstart', e => e.preventDefault());
+
+$('btnHint').addEventListener('click', () => {
+  if (busy || over) return;
+  clearHint();
+  const mv = findAnyMove();
+  if (!mv) { toast('没得消了，点洗牌'); return; }
+  hintTiles = mv;
+  mv.forEach(t => t.el.classList.add('hint'));
+  setTimeout(clearHint, 2400);
+});
+
+$('btnShuffle').addEventListener('click', async () => {
+  if (busy || over || shuffles <= 0) return;
+  shuffles--;
+  updateHUD();
+  await shuffleBoard();
+  await resolveCascades();
+  updateHUD();
+  resetIdle();
+});
+
+$('btnRestart').addEventListener('click', () => newGame());
+
+window.addEventListener('resize', () => { layout(); });
+window.addEventListener('orientationchange', () => setTimeout(layout, 220));
+
+// 调试出口（测试脚本可以读内部状态，不用靠截图猜）
+window.__G = {
+  get score(){ return score; },
+  get moves(){ return moves; },
+  get shuffles(){ return shuffles; },
+  get busy(){ return busy; },
+  get over(){ return over; },
+  get tiles(){ return tiles; },
+  get grid(){ return grid; },
+  get cell(){ return CELL; },
+  get goal(){ return GOAL; },
+  findMatches, findAnyMove, hasValidMove, swapMakesMatch,
+  _setScore(v){ score = v; updateHUD(); },
+  _setMoves(v){ moves = v; updateHUD(); },
+  _setGoal(v){ GOAL = v; updateHUD(); },
+  newGame,
+};
+
+// 启动 —— 必须走 newGame()，否则 moves 还是初值 0
+newGame();
+setTimeout(layout, 30);
+window.addEventListener('load', () => setTimeout(layout, 60));
+})();
+</script>
+</body>
+</html>
