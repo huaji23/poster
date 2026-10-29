@@ -979,35 +979,30 @@ function drawTable(c){
   cushG.addColorStop(1,   '#06875a');
   c.fillStyle = cushG;
 
-  /* 断口宽度必须和洞对齐：
-     中袋洞心在正中 → 断口半宽 = 洞半径；
-     角袋洞心被推向外侧 0.35R → 断口只需切到洞的内侧边缘 = 0.65R。
-     对不齐就会露出一块橙色木框，像块补丁。 */
-  const HR_C  = PCK_CORNER * 0.98;
-  const HR_S  = PCK_SIDE   * 0.98;
-  const cutC = 0.70 * HR_C;   // 角袋：洞的内侧边缘 0.65R + 刚好一点余量
-  const cutS = 1.03 * HR_S;   // 中袋：只比洞半径宽一点点
-  const railRect = (x, z, w, h) => { c.fillRect(x, z, w, h); };
+  /* 袋口开口用【圆弧】切，不能垂直切断 —— 直角断口的洞会露出一个完整圆弧，
+     看起来像颗半球凸在台面上。参考游戏里库边是绕着洞收口的，洞被弧形端头夹住。 */
+  const HR_C = PCK_CORNER * 0.98;
+  const HR_S = PCK_SIDE   * 0.98;
 
-  /* 断口里露出来的应该是「库边被切开的厚度面」（深绿），不是橙色木框。
-     先把整圈铺成断面色，后面 4 段胶条再叠上去 —— 断口自然就是深绿而不是木色。 */
+  c.save();
+  const clipP = new Path2D();
+  clipP.rect(-HW - CI, -HH - CI, (HW+CI)*2, (HH+CI)*2);          // 库边整圈
+  for(const [px, pz, pr] of POCKETS){
+    const isCorner = (px !== 0);
+    const HR  = pr * 0.98;
+    const OFS = isCorner ? 0 : HR * 0.55;                         // 和 drawPockets 里的洞心一致
+    const sx  = isCorner ? Math.sign(px) : 0;
+    const sz  = Math.sign(pz);
+    clipP.arc(px + sx*OFS, pz + sz*OFS, HR * 1.06, 0, Math.PI*2); // 略大于洞 → 留一圈木色洞沿
+  }
+  c.clip(clipP, 'evenodd');
+
+  // 断口断面（深绿）先铺满，再叠胶条
   c.fillStyle = '#066b47';
-  for(const sz of [-1, 1]) railRect(-HW - CI, sz < 0 ? -HH - CI : HH, (HW+CI)*2, CI);
-  for(const sx of [-1, 1]) railRect(sx < 0 ? -HW - CI : HW, -HH - CI, CI, (HH+CI)*2);
+  c.fillRect(-HW - CI, -HH - CI, (HW+CI)*2, (HH+CI)*2);
   c.fillStyle = cushG;
-
-  // 上 / 下库边：各断成左右两段
-  for(const sz of [-1, 1]){
-    const z0 = sz < 0 ? -HH - CI : HH;
-    railRect(-HW + cutC, z0, (-cutS) - (-HW + cutC), CI);   // 左段
-    railRect( cutS,      z0, (HW - cutC) - cutS,      CI);   // 右段
-  }
-  // 左 / 右库边：各断成上下两段
-  for(const sx of [-1, 1]){
-    const x0 = sx < 0 ? -HW - CI : HW;
-    railRect(x0, -HH + cutC, CI, (-cutS) - (-HH + cutC));   // 上段
-    railRect(x0,  cutS,      CI, (HH - cutC) - cutS);       // 下段
-  }
+  c.fillRect(-HW - CI, -HH - CI, (HW+CI)*2, (HH+CI)*2);
+  c.restore();
 
   // 库边外缘（贴木框那圈）压暗，做出凹下去的缝
   c.save();
@@ -1197,6 +1192,33 @@ function drawTable(c){
     c.strokeStyle = 'rgba(255,255,255,.7)';
     c.lineWidth = 0.0045;
     c.translate(-0.0035, -0.0040);
+    c.stroke();
+    c.restore();
+
+    /* 2.5) 袋口收口：库边胶条在洞的【台呢侧】也要包过来。
+       只画朝向台面中心的这半圈 —— 整圈会把木框和金属包角盖掉。
+       没有这半圈，洞的下半截就是直接切在绿布上的一个光秃秃圆弧。 */
+    let a0, a1;
+    if(isCorner){
+      if(sx < 0 && sz < 0)      { a0 = 0;           a1 = Math.PI/2; }
+      else if(sx > 0 && sz < 0) { a0 = Math.PI/2;   a1 = Math.PI; }
+      else if(sx < 0 && sz > 0) { a0 = -Math.PI/2;  a1 = 0; }
+      else                      { a0 = Math.PI;     a1 = Math.PI*1.5; }
+    } else {
+      if(sz < 0){ a0 = 0; a1 = Math.PI; } else { a0 = Math.PI; a1 = Math.PI*2; }
+    }
+    c.save();
+    c.beginPath();
+    c.arc(hx, hz, HR*1.22, a0, a1);
+    c.arc(hx, hz, HR*1.005, a1, a0, true);
+    c.closePath();
+    c.fillStyle = '#0aa06c';
+    c.fill();
+    // 收口内缘压一道暗，和洞拉开
+    c.beginPath();
+    c.arc(hx, hz, HR*1.075, a0, a1);
+    c.strokeStyle = 'rgba(3,60,40,.55)';
+    c.lineWidth = Math.max(0.0012, HR*0.055);
     c.stroke();
     c.restore();
 
