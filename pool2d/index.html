@@ -170,11 +170,15 @@ window.addEventListener('unhandledrejection', function(e){
 /* ── 台面尺寸 ── */
 const TABLE_W = 2.54, TABLE_H = 1.27;    // 中式八球标准内沿 2540×1270mm
 const HW = TABLE_W/2, HH = TABLE_H/2;
-const BALL_R = 0.0286;           // 球直径 57.2mm（中台协标准，别再放大了 —— 会让整张台面显得拥挤）
+/* 球径：物理真实是 57.2mm（台面能并排 44 个球），但那样在手机上小球只有 14px，
+   根本看不清。参考腾讯桌球实测：台面长度约放 26 个球 —— 所以游戏是等比放大的。
+   这里取台面 26 个球 = 球径 97.7mm（真实值的 1.71 倍），洞跟着等比放大，
+   球/洞比例仍保持真实的 1.835，只是整体放大。 */
+const BALL_R = 0.0488;           // 球直径 97.7mm（视觉等效，非物理真实）
 /* 袋口：中台协标准 角袋口 105mm、中袋口 120mm（腰袋比角袋宽 15mm）
    相对于 57.2mm 的球 = 1.835 倍 / 2.10 倍，与世界台联「袋口=球径 1.6 倍」同一取向 */
-const PCK_CORNER = 0.0525;       // 角袋口半径（105mm 开口的一半）
-const PCK_SIDE   = 0.0600;       // 中袋口半径（120mm 开口的一半）
+const PCK_CORNER = 0.0897;       // 角袋口半径（= 球径 × 1.835 / 2，跟着球等比放大）
+const PCK_SIDE   = 0.1026;       // 中袋口半径（= 球径 × 2.10 / 2，中袋必宽于角袋）
 const RAIL_W = 0.13;             // 库边宽
 const CUSHION = 0.87;            // 旧常量（已被 E_CUSH 取代，保留兼容）
 const BALL_DAMP = 0.96;          // 旧常量（已被 E_BALL 取代）
@@ -1039,23 +1043,25 @@ function drawTable(c){
   c.fillRect(-HW, -HH, TABLE_W, TABLE_H);
   c.restore();
 
-  /* 库边钻石点 */
-  c.fillStyle = 'rgba(255,255,255,.75)';
+  /* 库边钻石点（准星）：压暗+带一点外圈，别做成一排白灯 */
+  c.save();
+  c.fillStyle = 'rgba(238,244,240,.46)';
   for(let i = -3; i <= 3; i++){
     if(i === 0) continue;
     const x = i * (HW/4);
     // 上下库
     for(const zz of [-HH - RAIL_W*0.5, HH + RAIL_W*0.5]){
-      c.beginPath(); c.arc(x, zz, 0.0075, 0, Math.PI*2); c.fill();
+      c.beginPath(); c.arc(x, zz, 0.0115, 0, Math.PI*2); c.fill();
     }
   }
   for(let i = -1; i <= 1; i++){
     if(i === 0) continue;
     const z = i * (HH/2);
     for(const xx of [-HW - RAIL_W*0.5, HW + RAIL_W*0.5]){
-      c.beginPath(); c.arc(xx, z, 0.0075, 0, Math.PI*2); c.fill();
+      c.beginPath(); c.arc(xx, z, 0.0115, 0, Math.PI*2); c.fill();
     }
   }
+  c.restore();
 
   /* ── 袋口：金属包角 = 圆角板 − 椭圆洞（evenodd）──
      关键：内缘直接等于洞的轮廓，所以不可能出现「白色方框里包个蛋、四角还露着」 */
@@ -1089,10 +1095,11 @@ function drawTable(c){
       const rTL = (sx < 0 && sz < 0) ? R_OUT : R_IN;
       perCornerRect(c, x0, z0, x1-x0, z1-z0, rTL, rTR, rBR, rBL);
     } else {
-      // 中袋：内缘正好压在台呢边线上（一点不压绿布），沿库横向一段
+      // 中袋：金属板必须比洞更宽，否则黑洞会把木框啃掉一块
       const z0 = Math.min(pz, pz + sz*OUT_W);
       const z1 = Math.max(pz, pz + sz*OUT_W);
-      roundRectPath(c, -0.078, z0, 0.156, z1-z0, 0.012);
+      const hw = HR * 1.18;                  // 半宽 > 洞半径
+      roundRectPath(c, -hw, z0, hw*2, z1-z0, 0.014);
     }
 
     /* 2) 减去洞 → 包角内缘变成圆弧 */
