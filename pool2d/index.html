@@ -1884,51 +1884,66 @@ function drawFineBar(){
   fbx.lineWidth = 1.4;
   fbx.stroke();
 
-  // 中位凹槽（0° 的位置）
+  // 中位凹槽（0° 的参考带，固定不滚）
   fbx.save();
   roundRectPath(fbx, bx, top, bw, bh, bw/2);
   fbx.clip();
-  fbx.fillStyle = 'rgba(70,90,120,.16)';
+  fbx.fillStyle = 'rgba(70,90,120,.14)';
   fbx.fillRect(bx, cy - bh*0.055, bw, bh*0.11);
   fbx.restore();
 
-  // 刻度：13 条刻度线只是视觉标尺，实际角度无上限
-  const steps = 6;
-  for(let i = -steps; i <= steps; i++){
-    const y = cy + (bh/2 - 8) * (i / steps);
-    const major = (i === 0 || Math.abs(i) === steps);
-    const half  = (i % 2 === 0);
-    const len   = major ? bw*0.74 : (half ? bw*0.46 : bw*0.26);
-    fbx.strokeStyle = (i === 0) ? 'rgba(200,40,40,.9)' : 'rgba(24,30,46,.62)';
-    fbx.lineWidth = major ? 1.7 : 1;
+  /* ── 千分尺式：指针固定在正中不动，刻度尺从指针后面滚过去 ──
+     之前是指针跟着角度上下跑 —— 那是「滑动条」，不是「微调旋钮」。 */
+  const STEPS = 6;                       // 半幅 6 格（每格 = FINE_SHOW/6 ≈ 2.5°）
+  const halfPx = bh/2 - 6;               // 可视滚动半径
+  const gapPx  = halfPx / STEPS;         // 每格像素
+  const shift  = (aimOffset / FINE_SHOW) * halfPx;   // 刻度整体滚了多少像素
+
+  fbx.save();
+  roundRectPath(fbx, bx, top, bw, bh, bw/2);
+  fbx.clip();
+
+  const nTicks  = Math.ceil(bh / gapPx) + 3;
+  const baseIdx = Math.round(shift / gapPx);
+  for(let k = -nTicks; k <= nTicks; k++){
+    const idx = k + baseIdx;
+    const y   = cy + idx*gapPx - shift;
+    if(y < top - 1 || y > top + bh + 1) continue;
+    const isZero = (idx === 0);
+    const major  = isZero || (idx % STEPS === 0);
+    const alt    = (Math.abs(idx) % 2 === 0);
+    const len    = isZero ? bw*0.80 : major ? bw*0.62 : (alt ? bw*0.42 : bw*0.24);
+    fbx.strokeStyle = isZero ? 'rgba(200,40,40,.88)' : 'rgba(24,30,46,.58)';
+    fbx.lineWidth   = isZero ? 1.9 : (major ? 1.5 : 1);
     fbx.beginPath();
     fbx.moveTo(bx + bw/2 - len/2, y);
     fbx.lineTo(bx + bw/2 + len/2, y);
     fbx.stroke();
   }
+  fbx.restore();
 
-  // 指针：位置只映射到 ±15° 的显示范围，超出就贴边（角度本身还在变）
-  const raw = aimOffset / FINE_SHOW;
-  const t  = Math.max(-1, Math.min(1, raw));
-  const over = Math.abs(raw) > 1;
-  const py = cy + (bh/2 - 8) * t;
+  /* 指针：永远在正中 */
   const deg = Math.round(aimOffset * 180 / Math.PI);
   if(fineValEl) fineValEl.textContent = (deg > 0 ? '+' : '') + deg + '°';
-  const hot  = over ? '#ff7a5a' : (Math.abs(t) < 0.02 ? '#8ef0b0' : '#ffd750');
+  const hot = Math.abs(deg) < 1 ? '#8ef0b0' : '#ffd750';
+
+  // 右侧三角（固定）
   fbx.fillStyle = hot;
   fbx.beginPath();
-  fbx.moveTo(bx + bw + 3.5, py);
-  fbx.lineTo(bx + bw - 2.5, py - 6.5);
-  fbx.lineTo(bx + bw - 2.5, py + 6.5);
+  fbx.moveTo(bx + bw + 3.5, cy);
+  fbx.lineTo(bx + bw - 2.5, cy - 6.5);
+  fbx.lineTo(bx + bw - 2.5, cy + 6.5);
   fbx.closePath();
   fbx.fill();
   fbx.strokeStyle = 'rgba(90,60,0,.85)';
   fbx.lineWidth = 1;
   fbx.stroke();
+
+  // 指针横线（固定）
   fbx.strokeStyle = hot;
-  fbx.globalAlpha = 0.95;
-  fbx.lineWidth = 1.8;
-  fbx.beginPath(); fbx.moveTo(bx, py); fbx.lineTo(bx + bw, py); fbx.stroke();
+  fbx.globalAlpha = 0.92;
+  fbx.lineWidth = 1.7;
+  fbx.beginPath(); fbx.moveTo(bx, cy); fbx.lineTo(bx + bw, cy); fbx.stroke();
   fbx.globalAlpha = 1;
 }
 
