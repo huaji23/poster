@@ -177,9 +177,9 @@ const HW = TABLE_W/2, HH = TABLE_H/2;
 const BALL_R = 0.0374;           // 球直径 74.7mm（台面 34 球长：比真实 44.4 放大 31%，兼顾看清与不“垮”）
 /* 袋口：中台协标准 角袋口 105mm、中袋口 120mm（腰袋比角袋宽 15mm）
    相对于 57.2mm 的球 = 1.835 倍 / 2.10 倍，与世界台联「袋口=球径 1.6 倍」同一取向 */
-const PCK_CORNER = 0.0685;       // 角袋口半径（= 球径 × 1.835 / 2，跟着球等比）
-const PCK_SIDE   = 0.0784;       // 中袋口半径（= 球径 × 2.10 / 2，中袋必宽于角袋）
-const RAIL_W = 0.135;            // 库边宽（用户要更厚实的分量感，0.135 比腾讯 3.3% 更扎实）
+const PCK_CORNER = 0.0625;       // 角袋口半径（图里实测约 125mm 直径）
+const PCK_SIDE   = 0.0600;       // 中袋口半径（图里实测约 120mm 直径）
+const RAIL_W = 0.113;            // 库边宽 = 生成图里木框实测厚度（81px / 715.4px每米），否则台呢对不齐
 const CUSHION = 0.87;            // 旧常量（已被 E_CUSH 取代，保留兼容）
 const BALL_DAMP = 0.96;          // 旧常量（已被 E_BALL 取代）
 const FRICTION = 0.95;           // 旧常量（已被 MU_ROLL 取代）
@@ -202,9 +202,12 @@ const E_CUSH     = 0.86;    // 球-库 法向恢复系数
 const SLIDE_EPS  = 0.012;   // 接触点速度低于这个就算纯滚动
 
 /* 六个袋口：四角 + 两个中袋 */
+/* 洞心位置直接量自生成图（不是按 ±HW/±HH 估的）：
+   图里角袋实际在 ±1.25 / ±0.618，中袋在 0 / ±0.640，和台呢边线并不重合。
+   判定点跟着图片走，球滚到洞口才正好「掉进图里的那个洞」。 */
 const POCKETS = [
-  [-HW, -HH, PCK_CORNER], [0, -HH, PCK_SIDE], [HW, -HH, PCK_CORNER],
-  [-HW,  HH, PCK_CORNER], [0,  HH, PCK_SIDE], [HW,  HH, PCK_CORNER],
+  [-1.250, -0.618, PCK_CORNER], [0, -0.640, PCK_SIDE], [1.250, -0.618, PCK_CORNER],
+  [-1.250,  0.618, PCK_CORNER], [0,  0.640, PCK_SIDE], [1.250,  0.618, PCK_CORNER],
 ];
 
 /* 球色 */
@@ -695,7 +698,20 @@ function stepPhysics(dt){
       const vnOut = vnAbs * E_CUSH;
       b.vx = nx*vnOut + tx*vtOut;
       b.vz = nz*vnOut + tz*vtOut;
-      b.wy *= 0.72;
+
+      /* 撞库是一瞬间的大冲量，库边摩擦会同时把球的转动状态带到新方向。
+         不重置 ω 的话，球撞完还带着撞前的自转 → 接触点持续打滑 →
+         接下来近 2 秒里一直被摩擦力拽着改方向，轨迹看起来就是一条弯的曲线。 */
+      const sp2 = Math.hypot(b.vx, b.vz);
+      if(sp2 > 0.02){
+        const ux = b.vx/sp2, uz = b.vz/sp2;
+        const wRoll = sp2 / BALL_R;
+        b.wx =  uz * wRoll;
+        b.wz = -ux * wRoll;
+      } else {
+        b.wx = 0; b.wz = 0;
+      }
+      b.wy *= 0.72;                      // 绕垂直轴的自转（左右塞）保留一部分
     };
     if(b.x < -lx && !nearPocketZ){ b.x = -lx; cushiBounce( 1, 0, Math.abs(b.vx)); bounced = true; }
     if(b.x >  lx && !nearPocketZ){ b.x =  lx; cushiBounce(-1, 0, Math.abs(b.vx)); bounced = true; }
@@ -873,8 +889,20 @@ function getFeltPattern(c){
   return feltPat;
 }
 
+/* 桌面用生成图铺底：木框、台呢、库边、袋口全在图里，不用再手绘。
+   图片内部台呢边沿正好落在 ±HW / ±HH（因为 RAIL_W 取的就是图里木框的实测厚度）。 */
+const tableImg = new Image();
+tableImg.src = 'assets/table.jpg';
+
 function drawTable(c){
   const ow = HW + RAIL_W, oh = HH + RAIL_W;
+
+  if(tableImg.complete && tableImg.naturalWidth){
+    c.imageSmoothingEnabled = true;
+    c.imageSmoothingQuality = 'high';
+    c.drawImage(tableImg, -ow, -oh, ow*2, oh*2);
+    return;
+  }
 
   /* ══ ① 桌子厚度 + 落地投影：纯俯视会「扁」，加一层侧壁立刻立体 ══ */
   const TH = 0.078;
@@ -890,13 +918,7 @@ function drawTable(c){
   c.strokeStyle = 'rgba(255,208,152,.22)';
   c.lineWidth = 0.0036;
   c.beginPath(); c.moveTo(-ow + 0.032, oh - 0.026); c.lineTo(ow - 0.032, oh - 0.026); c.stroke();
-  // 落到背景上的软阴影
-  const dropG = c.createLinearGradient(0, oh + TH*0.35, 0, oh + TH + 0.30);
-  dropG.addColorStop(0,    'rgba(0,0,0,.58)');
-  dropG.addColorStop(0.40, 'rgba(0,0,0,.26)');
-  dropG.addColorStop(1,    'rgba(0,0,0,0)');
-  c.fillStyle = dropG;
-  c.fillRect(-ow*0.96, oh + TH*0.35, ow*1.92, TH + 0.30);
+  // （原来这里有一条横贯整个画面的落地软阴影，会压到「规则/重开」按钮后面，已删除）
 
   /* ══ ② 木框：真木纹（波浪线） + 四边倒角 ══ */
   const woodGrad = c.createLinearGradient(0, -oh, 0, oh);
