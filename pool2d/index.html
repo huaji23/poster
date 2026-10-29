@@ -76,11 +76,11 @@
                    box-shadow:0 0 18px rgba(255,204,77,.45)}
 
   /* ── 底部按钮 ── */
-  #bar{position:absolute;left:50%;transform:translateX(-50%);bottom:5px;
+  #bar{position:absolute;left:50%;transform:translateX(-50%);bottom:4px;
        display:flex;gap:7px;z-index:10}
-  #bar button{border:1px solid rgba(255,255,255,.16);border-radius:13px;
-    padding:5px 13px;font-size:11px;font-weight:800;font-family:inherit;
-    color:#c8d3f0;background:rgba(30,36,84,.82);backdrop-filter:blur(8px);
+  #bar button{border:1px solid rgba(160,178,230,.36);border-radius:12px;
+    padding:4px 12px;font-size:10.5px;font-weight:800;font-family:inherit;
+    color:#cdd8f4;background:#2b3372;
     cursor:pointer;transition:transform .12s}
   #bar button:active{transform:scale(.94)}
   #bar button:focus-visible{outline:2px solid #7ee8a2;outline-offset:3px}
@@ -174,12 +174,12 @@ const HW = TABLE_W/2, HH = TABLE_H/2;
    根本看不清。参考腾讯桌球实测：台面长度约放 26 个球 —— 所以游戏是等比放大的。
    这里取台面 26 个球 = 球径 97.7mm（真实值的 1.71 倍），洞跟着等比放大，
    球/洞比例仍保持真实的 1.835，只是整体放大。 */
-const BALL_R = 0.0286;           // 球直径 57.2mm（台面 44.4 球长，与腾讯桌球 46 球长一致）
+const BALL_R = 0.0374;           // 球直径 74.7mm（台面 34 球长：比真实 44.4 放大 31%，兼顾看清与不“垮”）
 /* 袋口：中台协标准 角袋口 105mm、中袋口 120mm（腰袋比角袋宽 15mm）
    相对于 57.2mm 的球 = 1.835 倍 / 2.10 倍，与世界台联「袋口=球径 1.6 倍」同一取向 */
-const PCK_CORNER = 0.0525;       // 角袋口半径（105mm，= 球径 × 1.835 / 2）
-const PCK_SIDE   = 0.0600;       // 中袋口半径（120mm，= 球径 × 2.10 / 2，中袋必宽于角袋）
-const RAIL_W = 0.075;            // 库边宽（腾讯实测木框只占台面长的 2.6%，原来 0.13 是两倍厚）
+const PCK_CORNER = 0.0685;       // 角袋口半径（= 球径 × 1.835 / 2，跟着球等比）
+const PCK_SIDE   = 0.0784;       // 中袋口半径（= 球径 × 2.10 / 2，中袋必宽于角袋）
+const RAIL_W = 0.105;            // 库边宽（0.075 太薄没分量、0.13 太厚挤台呢，取中间）
 const CUSHION = 0.87;            // 旧常量（已被 E_CUSH 取代，保留兼容）
 const BALL_DAMP = 0.96;          // 旧常量（已被 E_BALL 取代）
 const FRICTION = 0.95;           // 旧常量（已被 MU_ROLL 取代）
@@ -314,10 +314,10 @@ function layout(){
   cv.style.width  = LW + 'px';
   cv.style.height = LH + 'px';
 
-  const PAD_L = 44;    // 左侧力度杆
-  const PAD_R = 52;    // 右侧加塞球 + 微调
+  const PAD_L = 40;    // 左侧力度杆
+  const PAD_R = 46;    // 右侧加塞球 + 微调
   const PAD_T = 0;     // 台面顶到屏幕边
-  const PAD_B = 16;    // 底部两个小按钮
+  const PAD_B = 29;    // 底部两个小按钮（给它留够地方，别压住木框）
 
   const availW = Math.max(120, LW - PAD_L - PAD_R);
   const availH = Math.max(100, LH - PAD_T - PAD_B);
@@ -1074,10 +1074,13 @@ function drawTable(c){
     const isCorner = (px !== 0);
     const sx = isCorner ? Math.sign(px) : 0;
     const sz = Math.sign(pz);
-    // 洞心压在台角 / 库边线上：洞比金属略大，外圈留一圈窄边
-    const hx = px, hz = pz;
+    /* 洞心往木框方向偏 0.35*HR —— 洞主要落在木板上，才不会像一块黑饼贴在绿布上。
+       物理判定点仍在 POCKETS 的 (px,pz)，球滚到那里就进，不受视觉偏移影响。 */
     const HR = pr * 0.98;
-    const PLATE_IN = HR * 0.62;   // 金属向台内伸多少（必须 < 0.707*HR，内角才被圆吃掉）
+    const hx = px + sx*HR*0.35;
+    const hz = pz + sz*HR*0.35;
+    const PLATE_IN = HR * 0.80;   // 金属向台内伸多少（须 > 0.65*HR 才能包住洞）
+    const OUT_W2 = Math.max(0.006, OUT_W - HR*0.35);   // 金属外缘仍与桌子外沿齐平
     const rx = HR, rz = HR;    // 六个袋口全都是正圆（中袋不是扁的）
 
     c.save();
@@ -1085,20 +1088,21 @@ function drawTable(c){
     /* 1) 板子轮廓 */
     if(isCorner){
       // 角袋：方板，外缘和桌子外沿齐平，内侧伸一点到台呢上
-      const x0 = Math.min(hx - sx*PLATE_IN, hx + sx*OUT_W);
-      const x1 = Math.max(hx - sx*PLATE_IN, hx + sx*OUT_W);
-      const z0 = Math.min(hz - sz*PLATE_IN, hz + sz*OUT_W);
-      const z1 = Math.max(hz - sz*PLATE_IN, hz + sz*OUT_W);
+      const x0 = Math.min(hx - sx*PLATE_IN, hx + sx*OUT_W2);
+      const x1 = Math.max(hx - sx*PLATE_IN, hx + sx*OUT_W2);
+      const z0 = Math.min(hz - sz*PLATE_IN, hz + sz*OUT_W2);
+      const z1 = Math.max(hz - sz*PLATE_IN, hz + sz*OUT_W2);
       const rBR = (sx > 0 && sz > 0) ? R_OUT : R_IN;
       const rBL = (sx < 0 && sz > 0) ? R_OUT : R_IN;
       const rTR = (sx > 0 && sz < 0) ? R_OUT : R_IN;
       const rTL = (sx < 0 && sz < 0) ? R_OUT : R_IN;
       perCornerRect(c, x0, z0, x1-x0, z1-z0, rTL, rTR, rBR, rBL);
     } else {
-      // 中袋：金属板必须比洞更宽，否则黑洞会把木框啃掉一块
-      const z0 = Math.min(pz, pz + sz*OUT_W);
-      const z1 = Math.max(pz, pz + sz*OUT_W);
-      const hw = HR * 1.18;                  // 半宽 > 洞半径
+      // 中袋：金属板往台呢侧也延伸，在洞左右做出两条收口（否则洞像贴在绿布上）
+      const zin  = hz - sz*HR*0.80;
+      const zout = hz + sz*OUT_W2;
+      const z0 = Math.min(zin, zout), z1 = Math.max(zin, zout);
+      const hw = HR * 1.52;                  // 半宽明显大于洞半径
       roundRectPath(c, -hw, z0, hw*2, z1-z0, 0.014);
     }
 
