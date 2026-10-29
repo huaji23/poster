@@ -970,11 +970,13 @@ function drawTable(c){
         看起来像一颗球从桌子里凸出来；真实台球桌的库边在袋口是开口的，
         洞的左右被断口切成直边，只露出后半截。 */
   const CI = 0.048;   // 库边胶条厚度（32mm 太薄，洞口没有夹持感）
+  /* 库边色：参考游戏采样是 rgb(0,165,113)，和台呢同色系只稍深一点。
+     之前给到 #176b45 太暗，看起来像给台面描了一圈黑框。 */
   const cushG = c.createLinearGradient(0, -HH - CI, 0, HH + CI);
-  cushG.addColorStop(0,   '#176b45');
-  cushG.addColorStop(0.32,'#0e5133');
-  cushG.addColorStop(0.72,'#0a4028');
-  cushG.addColorStop(1,   '#062e1b');
+  cushG.addColorStop(0,   '#0aa06c');
+  cushG.addColorStop(0.30,'#09ab74');
+  cushG.addColorStop(0.72,'#089a68');
+  cushG.addColorStop(1,   '#06875a');
   c.fillStyle = cushG;
 
   /* 断口宽度必须和洞对齐：
@@ -983,9 +985,16 @@ function drawTable(c){
      对不齐就会露出一块橙色木框，像块补丁。 */
   const HR_C  = PCK_CORNER * 0.98;
   const HR_S  = PCK_SIDE   * 0.98;
-  const cutC = 0.65 * HR_C;
-  const cutS = 0.97 * HR_S;
+  const cutC = 0.70 * HR_C;   // 角袋：洞的内侧边缘 0.65R + 刚好一点余量
+  const cutS = 1.03 * HR_S;   // 中袋：只比洞半径宽一点点
   const railRect = (x, z, w, h) => { c.fillRect(x, z, w, h); };
+
+  /* 断口里露出来的应该是「库边被切开的厚度面」（深绿），不是橙色木框。
+     先把整圈铺成断面色，后面 4 段胶条再叠上去 —— 断口自然就是深绿而不是木色。 */
+  c.fillStyle = '#066b47';
+  for(const sz of [-1, 1]) railRect(-HW - CI, sz < 0 ? -HH - CI : HH, (HW+CI)*2, CI);
+  for(const sx of [-1, 1]) railRect(sx < 0 ? -HW - CI : HW, -HH - CI, CI, (HH+CI)*2);
+  c.fillStyle = cushG;
 
   // 上 / 下库边：各断成左右两段
   for(const sz of [-1, 1]){
@@ -1103,8 +1112,12 @@ function drawTable(c){
     /* 洞心往木框方向偏 0.35*HR —— 洞主要落在木板上，才不会像一块黑饼贴在绿布上。
        物理判定点仍在 POCKETS 的 (px,pz)，球滚到那里就进，不受视觉偏移影响。 */
     const HR = pr * 0.98;
-    const hx = px + sx*HR*0.35;
-    const hz = pz + sz*HR*0.35;
+    /* 洞心位置按参考游戏实测：
+       角袋洞心 ≈ 台呢角点本身（半个在台呢、半个在木框）；
+       中袋洞心往外偏 0.55R，台呢侧只露出 0.45R（偏少了洞会深陷进绿布，偏多了洞几乎全在木框里）。 */
+    const OFS = isCorner ? 0 : HR*0.55;
+    const hx = px + sx*OFS;
+    const hz = pz + sz*OFS;
     const PLATE_IN = HR * 0.10;   // 金属只占木框外侧一窄圈（伸进台呢就会像压了块白板）
     const OUT_W2 = Math.max(0.006, OUT_W - HR*0.35);   // 金属外缘仍与桌子外沿齐平
     const rx = HR, rz = HR;    // 六个袋口全都是正圆（中袋不是扁的）
@@ -1187,46 +1200,20 @@ function drawTable(c){
     c.stroke();
     c.restore();
 
-    /* 3) 洞：必须「凹下去」。
-       只画一个纯黑圆 = 贴在表面的黑饼；只加径向渐变 = 一颗浮着的黑球。
-       真实袋口从上往下看是三层：①洞口外沿的落影 ②一圈内壁（上沿受光、下沿背光）③洞底纯黑。 */
-    // ① 洞口外沿落影：让洞陷进桌面
-    const shg = c.createRadialGradient(hx, hz, rx*0.98, hx, hz, rx*1.46);
-    shg.addColorStop(0,   'rgba(0,0,0,.55)');
-    shg.addColorStop(0.5, 'rgba(0,0,0,.22)');
-    shg.addColorStop(1,   'rgba(0,0,0,0)');
-    c.beginPath(); c.arc(hx, hz, rx*1.46, 0, Math.PI*2);
-    c.fillStyle = shg; c.fill();
-
-    // ② 洞底：纯黑
+    /* 3) 洞：就是一块【平的纯色】。
+       逐像素采样参考游戏：从洞心到洞沿是同一个色 rgb(22,15,9) = #161009，全程无渐变。
+       内壁环 / 径向渐变 / 唇边高光 —— 这三样做出来的都是「立体的球」，不是洞。 */
     c.beginPath();
-    c.ellipse(hx, hz, rx*1.002, rz*1.002, 0, 0, Math.PI*2);
-    c.fillStyle = '#000000';
+    c.ellipse(hx, hz, rx*1.004, rz*1.004, 0, 0, Math.PI*2);
+    c.fillStyle = '#161009';
     c.fill();
 
-    // ③ 内壁：环状（外圆 − 内圆），上沿受光、下沿背光 —— 这一圈是「凹」的全部来源
-    c.save();
-    const wallP = new Path2D();
-    wallP.arc(hx, hz, rx*1.002, 0, Math.PI*2);
-    wallP.arc(hx, hz, rx*0.900, 0, Math.PI*2, true);
-    c.clip(wallP, 'evenodd');
-    const wg = c.createLinearGradient(hx, hz - rz*1.05, hx, hz + rz*1.05);
-    // 内壁要「均匀」—— 上亮下暗的强渐变会让洞变回一颗球
-    wg.addColorStop(0,    'rgba(96,76,52,.52)');
-    wg.addColorStop(0.5,  'rgba(74,58,40,.44)');
-    wg.addColorStop(1,    'rgba(52,41,28,.38)');
-    c.fillStyle = wg;
-    c.fillRect(hx - rx*1.1, hz - rz*1.1, rx*2.2, rz*2.2);
-    c.restore();
-
-    // ④ 洞口上沿的一线高光（光从上方打下来，正好落在洞的唇边）
-    c.save();
+    // 洞沿只有 1~2px 的过渡色，别无其他
     c.beginPath();
-    c.arc(hx, hz, rx*1.002, Math.PI*1.10, Math.PI*1.90);
-    c.strokeStyle = 'rgba(255,240,210,.13)';
-    c.lineWidth = Math.max(0.0015, rx*0.040);
+    c.ellipse(hx, hz, rx*1.004, rz*1.004, 0, 0, Math.PI*2);
+    c.strokeStyle = 'rgba(30,26,38,.60)';
+    c.lineWidth = Math.max(0.0012, rx*0.030);
     c.stroke();
-    c.restore();
 
     c.restore();
   }
