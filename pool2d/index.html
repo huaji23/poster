@@ -63,7 +63,7 @@
             background:rgba(18,14,38,.45);
             border:1px solid rgba(255,255,255,.13);
             box-shadow:0 4px 16px rgba(0,0,0,.38)}
-  #spinBall{width:50px;height:50px;display:block;pointer-events:none}
+  #spinBall{width:38px;height:38px;display:block;pointer-events:none}
   #spinWrap.active{border-color:rgba(255,204,77,.75);
                    box-shadow:0 0 18px rgba(255,204,77,.45)}
   #fineWrap{pointer-events:auto;touch-action:none;cursor:pointer;margin-top:2px;
@@ -174,12 +174,12 @@ const HW = TABLE_W/2, HH = TABLE_H/2;
    根本看不清。参考腾讯桌球实测：台面长度约放 26 个球 —— 所以游戏是等比放大的。
    这里取台面 26 个球 = 球径 97.7mm（真实值的 1.71 倍），洞跟着等比放大，
    球/洞比例仍保持真实的 1.835，只是整体放大。 */
-const BALL_R = 0.0488;           // 球直径 97.7mm（视觉等效，非物理真实）
+const BALL_R = 0.0286;           // 球直径 57.2mm（台面 44.4 球长，与腾讯桌球 46 球长一致）
 /* 袋口：中台协标准 角袋口 105mm、中袋口 120mm（腰袋比角袋宽 15mm）
    相对于 57.2mm 的球 = 1.835 倍 / 2.10 倍，与世界台联「袋口=球径 1.6 倍」同一取向 */
-const PCK_CORNER = 0.0897;       // 角袋口半径（= 球径 × 1.835 / 2，跟着球等比放大）
-const PCK_SIDE   = 0.1026;       // 中袋口半径（= 球径 × 2.10 / 2，中袋必宽于角袋）
-const RAIL_W = 0.13;             // 库边宽
+const PCK_CORNER = 0.0525;       // 角袋口半径（105mm，= 球径 × 1.835 / 2）
+const PCK_SIDE   = 0.0600;       // 中袋口半径（120mm，= 球径 × 2.10 / 2，中袋必宽于角袋）
+const RAIL_W = 0.075;            // 库边宽（腾讯实测木框只占台面长的 2.6%，原来 0.13 是两倍厚）
 const CUSHION = 0.87;            // 旧常量（已被 E_CUSH 取代，保留兼容）
 const BALL_DAMP = 0.96;          // 旧常量（已被 E_BALL 取代）
 const FRICTION = 0.95;           // 旧常量（已被 MU_ROLL 取代）
@@ -314,10 +314,10 @@ function layout(){
   cv.style.width  = LW + 'px';
   cv.style.height = LH + 'px';
 
-  const PAD_L = 47;    // 左侧力度杆
-  const PAD_R = 64;    // 右侧加塞球 + 微调
-  const PAD_T = 4;     // 顶部不留东西了
-  const PAD_B = 24;    // 底部两个小按钮
+  const PAD_L = 44;    // 左侧力度杆
+  const PAD_R = 52;    // 右侧加塞球 + 微调
+  const PAD_T = 0;     // 台面顶到屏幕边
+  const PAD_B = 16;    // 底部两个小按钮
 
   const availW = Math.max(120, LW - PAD_L - PAD_R);
   const availH = Math.max(100, LH - PAD_T - PAD_B);
